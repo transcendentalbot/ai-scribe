@@ -1,0 +1,466 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cognito User Pool for AI Scribe authentication
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage
+
+Resources:
+  # User Pool for healthcare providers
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'ai-scribe-${Stage}'
+      
+      # Username configuration
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      
+      # Auto-verified attributes
+      AutoVerifiedAttributes:
+        - email
+      
+      # Password policy (HIPAA compliant)
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 1
+      
+      # Account recovery
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      
+      # MFA configuration (required for HIPAA)
+      MfaConfiguration: OPTIONAL
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+        - SMS_MFA
+      
+      # User attributes
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+        - Name: name
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: provider_id
+          AttributeDataType: String
+          Mutable: true
+          DeveloperOnlyAttribute: false
+        - Name: license_number
+          AttributeDataType: String
+          Mutable: true
+          DeveloperOnlyAttribute: false
+        - Name: specialty
+          AttributeDataType: String
+          Mutable: true
+          DeveloperOnlyAttribute: false
+        - Name: organization
+          AttributeDataType: String
+          Mutable: true
+          DeveloperOnlyAttribute: false
+      
+      # Device tracking for security
+      DeviceConfiguration:
+        ChallengeRequiredOnNewDevice: true
+        DeviceOnlyRememberedOnUserPrompt: false
+      
+      # Advanced security features
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+      
+      # Email configuration
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+        ReplyToEmailAddress: noreply@healthspaceai.com
+      
+      EmailVerificationMessage: |
+        Your AI Scribe verification code is {####}.
+        
+        This code expires in 24 hours.
+        
+        If you didn't request this code, please contact support immediately.
+      
+      EmailVerificationSubject: AI Scribe - Verify your email
+      
+      # SMS configuration
+      SmsConfiguration:
+        SnsCallerArn: !GetAtt CognitoSNSRole.Arn
+        ExternalId: !Sub '${AWS::StackName}-external'
+      
+      SmsVerificationMessage: 'Your AI Scribe verification code is {####}'
+      
+      # Lambda triggers for custom authentication flows
+      LambdaConfig:
+        PreSignUp: !GetAtt PreSignUpFunction.Arn
+        PostAuthentication: !GetAtt PostAuthFunction.Arn
+        PreAuthentication: !GetAtt PreAuthFunction.Arn
+        PostConfirmation: !GetAtt PostConfirmationFunction.Arn
+        CustomMessage: !GetAtt CustomMessageFunction.Arn
+      
+      # User pool tags
+      UserPoolTags:
+        HIPAA: true
+        Environment: !Ref Stage
+
+  # User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'ai-scribe-${Stage}-client'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false # For SPA applications
+      
+      # Token configuration
+      RefreshTokenValidity: 1 # 1 day
+      AccessTokenValidity: 15 # 15 minutes
+      IdTokenValidity: 15 # 15 minutes
+      TokenValidityUnits:
+        RefreshToken: days
+        AccessToken: minutes
+        IdToken: minutes
+      
+      # OAuth configuration
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      
+      # Callback URLs (to be updated with actual frontend URLs)
+      CallbackURLs:
+        - http://localhost:3000/callback
+        - https://app.aiscribe.health/callback
+      
+      LogoutURLs:
+        - http://localhost:3000/logout
+        - https://app.aiscribe.health/logout
+      
+      # Security settings
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      
+      # Attribute permissions
+      ReadAttributes:
+        - email
+        - name
+        - custom:provider_id
+        - custom:license_number
+        - custom:specialty
+        - custom:organization
+      
+      WriteAttributes:
+        - email
+        - name
+        - custom:provider_id
+        - custom:license_number
+        - custom:specialty
+        - custom:organization
+
+  # User Pool Domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub 'ai-scribe-${Stage}-${AWS::AccountId}'
+      UserPoolId: !Ref UserPool
+
+  # IAM Role for Cognito SMS
+  CognitoSNSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Sub '${AWS::StackName}-external'
+      Policies:
+        - PolicyName: CognitoSNSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: '*'
+
+  # Lambda Functions for Cognito Triggers
+  PreSignUpFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ai-scribe-${Stage}-pre-signup'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Pre-signup trigger:', JSON.stringify(event, null, 2));
+            
+            // Validate provider license (placeholder)
+            const licenseNumber = event.request.userAttributes['custom:license_number'];
+            if (licenseNumber) {
+              // TODO: Validate against provider registry
+              console.log('Validating license:', licenseNumber);
+            }
+            
+            // Auto-confirm known domains
+            const email = event.request.userAttributes.email;
+            const allowedDomains = ['healthspaceai.com'];
+            const domain = email.split('@')[1];
+            
+            if (allowedDomains.includes(domain)) {
+              event.response.autoConfirmUser = true;
+              event.response.autoVerifyEmail = true;
+            }
+            
+            return event;
+          };
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  PostAuthFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ai-scribe-${Stage}-post-auth'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
+          
+          const client = new DynamoDBClient({});
+          const docClient = DynamoDBDocumentClient.from(client);
+          
+          exports.handler = async (event) => {
+            console.log('Post-auth trigger:', JSON.stringify(event, null, 2));
+            
+            // Log authentication event
+            await docClient.send(new PutCommand({
+              TableName: process.env.AUDIT_TABLE,
+              Item: {
+                pk: `USER#${event.request.userAttributes.sub}`,
+                sk: `AUTH#${new Date().toISOString()}`,
+                userId: event.request.userAttributes.sub,
+                email: event.request.userAttributes.email,
+                action: 'USER_LOGIN',
+                timestamp: new Date().toISOString(),
+                ip: event.request.userContextData?.ipAddress,
+                ttl: Math.floor(Date.now() / 1000) + (7 * 365 * 24 * 60 * 60) // 7 years
+              }
+            }));
+            
+            return event;
+          };
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          AUDIT_TABLE: !Sub 'ai-scribe-audit-${Stage}'
+
+  PreAuthFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ai-scribe-${Stage}-pre-auth'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Pre-auth trigger:', JSON.stringify(event, null, 2));
+            
+            // Check for suspicious login attempts
+            const userAttributes = event.request.userAttributes;
+            if (userAttributes && userAttributes['custom:suspended'] === 'true') {
+              throw new Error('Account suspended. Please contact support.');
+            }
+            
+            return event;
+          };
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  PostConfirmationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ai-scribe-${Stage}-post-confirmation'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
+          
+          const client = new DynamoDBClient({});
+          const docClient = DynamoDBDocumentClient.from(client);
+          
+          exports.handler = async (event) => {
+            console.log('Post-confirmation trigger:', JSON.stringify(event, null, 2));
+            
+            // Create user profile in DynamoDB
+            await docClient.send(new PutCommand({
+              TableName: process.env.MAIN_TABLE,
+              Item: {
+                pk: `USER#${event.request.userAttributes.sub}`,
+                sk: 'PROFILE',
+                entityType: 'USER',
+                userId: event.request.userAttributes.sub,
+                email: event.request.userAttributes.email,
+                name: event.request.userAttributes.name,
+                providerId: event.request.userAttributes['custom:provider_id'],
+                licenseNumber: event.request.userAttributes['custom:license_number'],
+                specialty: event.request.userAttributes['custom:specialty'],
+                organization: event.request.userAttributes['custom:organization'],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                gsi1pk: `EMAIL#${event.request.userAttributes.email}`,
+                gsi1sk: `USER#${event.request.userAttributes.sub}`
+              }
+            }));
+            
+            return event;
+          };
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          MAIN_TABLE: !Sub 'ai-scribe-${Stage}'
+
+  CustomMessageFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ai-scribe-${Stage}-custom-message'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Custom message trigger:', JSON.stringify(event, null, 2));
+            
+            // Customize email messages
+            if (event.triggerSource === 'CustomMessage_SignUp') {
+              event.response.emailSubject = 'Welcome to AI Scribe - Verify your email';
+              event.response.emailMessage = `
+                <h2>Welcome to AI Scribe!</h2>
+                <p>Thank you for signing up. Please verify your email address by entering this code:</p>
+                <h1 style="color: #2563eb;">${event.request.codeParameter}</h1>
+                <p>This code expires in 24 hours.</p>
+                <p>If you didn't sign up for AI Scribe, please ignore this email.</p>
+                <hr>
+                <p style="color: #666; font-size: 12px;">
+                  This is a HIPAA-compliant service. Your data is encrypted and secure.
+                </p>
+              `;
+            }
+            
+            return event;
+          };
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ai-scribe-${Stage}'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ai-scribe-audit-${Stage}'
+
+  # Lambda Permissions for Cognito
+  PreSignUpPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PreSignUpFunction
+      Principal: cognito-idp.amazonaws.com
+      Action: lambda:InvokeFunction
+      SourceArn: !GetAtt UserPool.Arn
+
+  PostAuthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PostAuthFunction
+      Principal: cognito-idp.amazonaws.com
+      Action: lambda:InvokeFunction
+      SourceArn: !GetAtt UserPool.Arn
+
+  PreAuthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PreAuthFunction
+      Principal: cognito-idp.amazonaws.com
+      Action: lambda:InvokeFunction
+      SourceArn: !GetAtt UserPool.Arn
+
+  PostConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PostConfirmationFunction
+      Principal: cognito-idp.amazonaws.com
+      Action: lambda:InvokeFunction
+      SourceArn: !GetAtt UserPool.Arn
+
+  CustomMessagePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CustomMessageFunction
+      Principal: cognito-idp.amazonaws.com
+      Action: lambda:InvokeFunction
+      SourceArn: !GetAtt UserPool.Arn
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+  
+  UserPoolArn:
+    Description: Cognito User Pool ARN
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolArn'
+  
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolClientId'
+  
+  UserPoolDomain:
+    Description: Cognito User Pool Domain
+    Value: !Ref UserPoolDomain
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolDomain'

@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM policies for AWS Bedrock access
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage
+
+Resources:
+  # IAM policy for Lambda functions to access Bedrock
+  BedrockAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub 'ai-scribe-${Stage}-bedrock-access'
+      Description: Policy for Lambda functions to access AWS Bedrock
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Allow invoking Bedrock models
+          - Effect: Allow
+            Action:
+              - 'bedrock:InvokeModel'
+              - 'bedrock:InvokeModelWithResponseStream'
+            Resource:
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0'
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-v2:1'
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/meta.llama2-70b-chat-v1'
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/*'
+          
+          # Allow listing available models
+          - Effect: Allow
+            Action:
+              - 'bedrock:ListFoundationModels'
+              - 'bedrock:GetFoundationModel'
+            Resource: '*'
+          
+          # Allow reading model configuration from Parameter Store
+          - Effect: Allow
+            Action:
+              - 'ssm:GetParameter'
+              - 'ssm:GetParameters'
+            Resource:
+              - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-scribe-${Stage}/bedrock-model-id'
+
+  # Lambda execution role for note generation functions
+  NoteGenerationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ai-scribe-${Stage}-note-generation'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - !Ref BedrockAccessPolicy
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:Query'
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ai-scribe-${Stage}'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ai-scribe-${Stage}/index/*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::ai-scribe-audio-${Stage}-${AWS::AccountId}/*'
+        - PolicyName: KMSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'kms:ViaService':
+                      - !Sub 's3.${AWS::Region}.amazonaws.com'
+                      - !Sub 'dynamodb.${AWS::Region}.amazonaws.com'
+
+Outputs:
+  BedrockAccessPolicyArn:
+    Description: ARN of the Bedrock access policy
+    Value: !Ref BedrockAccessPolicy
+    Export:
+      Name: !Sub '${AWS::StackName}-BedrockAccessPolicyArn'
+  
+  NoteGenerationRoleArn:
+    Description: ARN of the note generation role
+    Value: !GetAtt NoteGenerationRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-NoteGenerationRoleArn'

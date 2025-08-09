@@ -1,0 +1,51 @@
+{
+  "projectName": "AI Scribe MVP",
+  "customInstructions": "This is a HIPAA-compliant medical scribe application. Always follow the rules in ./Project Knowledge/cursorrules.md. Prioritize security and patient data protection in all decisions.",
+  "projectContext": {
+    "type": "medical-saas",
+    "description": "Serverless medical scribe for primary care providers",
+    "compliance": ["HIPAA", "HITECH", "WCAG 2.1"],
+    "stack": {
+      "backend": {
+        "runtime": "AWS Lambda Node.js 20.x",
+        "database": "DynamoDB (single-table design)",
+        "api": "API Gateway (REST + WebSocket)",
+        "auth": "AWS Cognito",
+        "storage": "S3 (24-hour lifecycle)"
+      },
+      "frontend": {
+        "framework": "Next.js 14 (App Router)",
+        "language": "TypeScript (strict mode)",
+        "styling": "Tailwind CSS",
+        "state": "Zustand",
+        "deployment": "Vercel"
+      },
+      "services": {
+        "transcription": ["Deepgram", "AssemblyAI"],
+        "ai": "OpenAI GPT-4",
+        "email": "SendGrid"
+      }
+    }
+  },
+  "autoLoadFiles": [
+    "./Project Knowledge/cursorrules.md",
+    "./Project Knowledge/PRP.md"
+  ],
+  "codeGeneration": {
+    "style": "production-ready",
+    "errorHandling": "comprehensive",
+    "security": "HIPAA-compliant",
+    "testing": "jest",
+    "documentation": "JSDoc"
+  },
+  "developmentOrder": [
+    "infrastructure",
+    "authentication",
+    "encounters",
+    "audio-recording",
+    "transcription",
+    "note-generation",
+    "smart-clipboard",
+    "error-handling"
+  ]
+}

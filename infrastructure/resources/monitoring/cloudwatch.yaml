@@ -1,0 +1,423 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudWatch monitoring and alarms for AI Scribe
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage
+  
+  AlertEmail:
+    Type: String
+    Description: Email address for alerts
+  
+  ApiId:
+    Type: String
+    Description: REST API ID
+
+Resources:
+  # SNS Topic for alerts
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'ai-scribe-${Stage}-alerts'
+      DisplayName: AI Scribe Alerts
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  # CloudWatch Dashboard
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'ai-scribe-${Stage}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/ApiGateway", "Count", { "stat": "Sum", "period": 300 } ],
+                  [ ".", "4XXError", { "stat": "Sum", "period": 300 } ],
+                  [ ".", "5XXError", { "stat": "Sum", "period": 300 } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "API Requests",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", { "stat": "Sum" } ],
+                  [ ".", "Errors", { "stat": "Sum" } ],
+                  [ ".", "Throttles", { "stat": "Sum" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Lambda Functions",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/DynamoDB", "UserErrors", { "stat": "Sum" } ],
+                  [ ".", "SystemErrors", { "stat": "Sum" } ],
+                  [ ".", "ConsumedReadCapacityUnits", { "stat": "Sum" } ],
+                  [ ".", "ConsumedWriteCapacityUnits", { "stat": "Sum" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "DynamoDB",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/S3", "NumberOfObjects", "BucketName", "ai-scribe-audio-${Stage}-${AWS::AccountId}", { "stat": "Average" } ],
+                  [ ".", "BucketSizeBytes", ".", ".", { "stat": "Average" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "S3 Storage",
+                "period": 300
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 12,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/ai-scribe-${Stage}' | fields @timestamp, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 20",
+                "region": "${AWS::Region}",
+                "title": "Recent Errors",
+                "queryType": "Insights"
+              }
+            }
+          ]
+        }
+
+  # API Gateway 4XX errors alarm
+  ApiGateway4XXAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-api-4xx'
+      AlarmDescription: High rate of 4XX errors in API Gateway
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub 'ai-scribe-${Stage}'
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # API Gateway 5XX errors alarm
+  ApiGateway5XXAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-api-5xx'
+      AlarmDescription: High rate of 5XX errors in API Gateway
+      MetricName: 5XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub 'ai-scribe-${Stage}'
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # Lambda errors alarm
+  LambdaErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-lambda-errors'
+      AlarmDescription: High error rate in Lambda functions
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 25
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # Lambda throttles alarm
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-lambda-throttles'
+      AlarmDescription: Lambda functions being throttled
+      MetricName: Throttles
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # DynamoDB errors alarm
+  DynamoDBErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-dynamodb-errors'
+      AlarmDescription: Errors in DynamoDB operations
+      MetricName: SystemErrors
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Sub 'ai-scribe-${Stage}'
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # Cognito sign-in failures alarm
+  CognitoSignInFailuresAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-signin-failures'
+      AlarmDescription: High rate of sign-in failures
+      MetricName: SignInFailures
+      Namespace: AWS/Cognito
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 20
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # S3 bucket size alarm (cost control)
+  S3BucketSizeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-s3-size'
+      AlarmDescription: S3 bucket size exceeding threshold
+      MetricName: BucketSizeBytes
+      Namespace: AWS/S3
+      Statistic: Average
+      Period: 86400 # 1 day
+      EvaluationPeriods: 1
+      Threshold: 107374182400 # 100 GB
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: BucketName
+          Value: !Sub 'ai-scribe-audio-${Stage}-${AWS::AccountId}'
+        - Name: StorageType
+          Value: StandardStorage
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # Custom metrics for business logic
+  TranscriptionFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ai-scribe-${Stage}-transcription-failures'
+      AlarmDescription: High rate of transcription failures
+      MetricName: TranscriptionFailures
+      Namespace: AIScribe
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # Log groups for X-Ray
+  XRayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/xray/ai-scribe-${Stage}'
+      RetentionInDays: 30
+
+  # CloudWatch Logs Insights queries
+  ErrorQueryDefinition:
+    Type: AWS::Logs::QueryDefinition
+    Properties:
+      Name: !Sub 'ai-scribe-${Stage}-errors'
+      LogGroupNames:
+        - !Sub '/aws/lambda/ai-scribe-${Stage}'
+      QueryString: |
+        fields @timestamp, @message
+        | filter @message like /ERROR/
+        | stats count() by bin(5m)
+
+  PerformanceQueryDefinition:
+    Type: AWS::Logs::QueryDefinition
+    Properties:
+      Name: !Sub 'ai-scribe-${Stage}-performance'
+      LogGroupNames:
+        - !Sub '/aws/lambda/ai-scribe-${Stage}'
+      QueryString: |
+        fields @timestamp, @duration
+        | filter @type = "REPORT"
+        | stats avg(@duration), max(@duration), min(@duration) by bin(5m)
+
+  # Budget alarm
+  BudgetAlarm:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub 'ai-scribe-${Stage}-monthly'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: 1000
+          Unit: USD
+        CostFilters:
+          TagKeyValue:
+            - !Sub 'user:Environment$${Stage}'
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+  # CloudWatch Logs subscription filter for error aggregation
+  ErrorLogSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/ai-scribe-${Stage}'
+      FilterPattern: '[timestamp, request_id, log_level=ERROR, ...]'
+      DestinationArn: !GetAtt ErrorProcessorFunction.Arn
+
+  # Error processor Lambda
+  ErrorProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ai-scribe-${Stage}-error-processor'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          const zlib = require('zlib');
+          const { CloudWatchClient, PutMetricDataCommand } = require('@aws-sdk/client-cloudwatch');
+          
+          const cloudwatch = new CloudWatchClient({});
+          
+          exports.handler = async (event) => {
+            const payload = Buffer.from(event.awslogs.data, 'base64');
+            const parsed = JSON.parse(zlib.gunzipSync(payload).toString('utf8'));
+            
+            const errorCount = parsed.logEvents.length;
+            
+            // Publish custom metric
+            await cloudwatch.send(new PutMetricDataCommand({
+              Namespace: 'AIScribe',
+              MetricData: [{
+                MetricName: 'ApplicationErrors',
+                Value: errorCount,
+                Unit: 'Count',
+                Timestamp: new Date()
+              }]
+            }));
+            
+            return { statusCode: 200 };
+          };
+      Role: !GetAtt ErrorProcessorRole.Arn
+
+  ErrorProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudWatchMetrics
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+
+  ErrorProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ErrorProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: logs.amazonaws.com
+      SourceArn: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ai-scribe-${Stage}:*'
+
+Outputs:
+  DashboardURL:
+    Description: CloudWatch Dashboard URL
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=ai-scribe-${Stage}'
+  
+  AlertTopicArn:
+    Description: SNS topic for alerts
+    Value: !Ref AlertTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlertTopicArn'

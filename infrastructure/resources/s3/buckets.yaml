@@ -1,0 +1,310 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 buckets for AI Scribe audio storage and audit logs
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage
+  
+  KMSKeyId:
+    Type: String
+    Description: KMS key ID for encryption
+
+Resources:
+  # Main audio storage bucket
+  AudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'ai-scribe-audio-${Stage}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref KMSKeyId
+      
+      # Versioning for data protection
+      VersioningConfiguration:
+        Status: Enabled
+      
+      # Block all public access
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      
+      # Lifecycle rules for cost optimization
+      LifecycleConfiguration:
+        Rules:
+          # Move recordings to IA after 30 days
+          - Id: MoveToIA
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+          
+          # Move to Glacier after 90 days
+          - Id: MoveToGlacier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+          
+          # Delete after 7 years (HIPAA requirement)
+          - Id: DeleteOldFiles
+            Status: Enabled
+            ExpirationInDays: 2555 # 7 years
+          
+          # Clean up incomplete multipart uploads
+          - Id: CleanupIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      
+      # CORS configuration for direct browser uploads
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - HEAD
+            AllowedOrigins:
+              - '*' # Will be restricted to specific domains in production
+            ExposedHeaders:
+              - ETag
+              - x-amz-server-side-encryption
+              - x-amz-request-id
+              - x-amz-id-2
+            MaxAge: 3600
+      
+      # Event notifications for processing
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt AudioProcessorFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: recordings/
+                  - Name: suffix
+                    Value: .webm
+      
+      Tags:
+        - Key: HIPAA
+          Value: true
+        - Key: PHI
+          Value: true
+        - Key: Environment
+          Value: !Ref Stage
+
+  # Bucket policy for secure access
+  AudioBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AudioBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Deny non-SSL requests
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt AudioBucket.Arn
+              - !Sub '${AudioBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+          
+          # Allow CloudFront OAI access (for secure distribution)
+          - Sid: AllowCloudFrontAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOAI}'
+            Action:
+              - 's3:GetObject'
+            Resource: !Sub '${AudioBucket.Arn}/*'
+
+  # Audit logs bucket
+  AuditBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'ai-scribe-audit-${Stage}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref KMSKeyId
+      
+      # Versioning for audit integrity
+      VersioningConfiguration:
+        Status: Enabled
+      
+      # Object lock for compliance
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: COMPLIANCE
+            Years: 7
+      
+      # Block all public access
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      
+      # Lifecycle for long-term retention
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArchiveAuditLogs
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER_IR
+              - TransitionInDays: 365
+                StorageClass: DEEP_ARCHIVE
+      
+      Tags:
+        - Key: HIPAA
+          Value: true
+        - Key: Compliance
+          Value: audit
+        - Key: Environment
+          Value: !Ref Stage
+
+  # Audit bucket policy
+  AuditBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AuditBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Deny non-SSL requests
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt AuditBucket.Arn
+              - !Sub '${AuditBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+          
+          # Allow CloudTrail to write logs
+          - Sid: AllowCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:PutObject'
+            Resource: !Sub '${AuditBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-server-side-encryption': 'aws:kms'
+                's3:x-amz-server-side-encryption-aws-kms-key-id': !Ref KMSKeyId
+          
+          # Allow CloudTrail to check bucket ACL
+          - Sid: AllowCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:GetBucketAcl'
+            Resource: !GetAtt AuditBucket.Arn
+
+  # CloudFront Origin Access Identity
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub 'OAI for AI Scribe audio bucket ${Stage}'
+
+  # Placeholder Lambda for audio processing
+  AudioProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ai-scribe-${Stage}-audio-processor'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Audio file uploaded:', JSON.stringify(event, null, 2));
+            // Placeholder for audio processing logic
+            return { statusCode: 200 };
+          };
+      Role: !GetAtt AudioProcessorRole.Arn
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+
+  AudioProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                Resource: !Sub '${AudioBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: !Ref KMSKeyId
+
+  # Lambda permission for S3 to invoke
+  AudioProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AudioProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt AudioBucket.Arn
+
+Outputs:
+  AudioBucketName:
+    Description: Name of the audio storage bucket
+    Value: !Ref AudioBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-AudioBucketName'
+  
+  AudioBucketArn:
+    Description: ARN of the audio storage bucket
+    Value: !GetAtt AudioBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AudioBucketArn'
+  
+  AuditBucketName:
+    Description: Name of the audit logs bucket
+    Value: !Ref AuditBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-AuditBucketName'
+  
+  CloudFrontOAIId:
+    Description: CloudFront Origin Access Identity ID
+    Value: !Ref CloudFrontOAI
+    Export:
+      Name: !Sub '${AWS::StackName}-CloudFrontOAIId'

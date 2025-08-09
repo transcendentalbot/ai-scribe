@@ -1,0 +1,341 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AI Scribe MVP - HIPAA Compliant Medical Transcription Service
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 1024
+    Tracing: Active
+    Environment:
+      Variables:
+        STAGE: !Ref Stage
+        REGION: !Ref AWS::Region
+        AUDIT_LOG_ENABLED: true
+        PHI_ENCRYPTION_ENABLED: true
+    Layers:
+      - !Ref CommonLayer
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment stage
+  
+  DomainName:
+    Type: String
+    Default: ""
+    Description: Custom domain name for API (optional)
+  
+  AlertEmail:
+    Type: String
+    Description: Email for CloudWatch alerts
+    Default: alerts@healthspaceai.com
+
+Resources:
+  # KMS Key for PHI Encryption
+  PHIEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Master key for encrypting PHI data
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow services to use the key
+            Effect: Allow
+            Principal:
+              Service:
+                - dynamodb.amazonaws.com
+                - s3.amazonaws.com
+                - logs.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+      Tags:
+        - Key: HIPAA
+          Value: true
+        - Key: Purpose
+          Value: PHI-Encryption
+
+  PHIEncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/ai-scribe-${Stage}-phi'
+      TargetKeyId: !Ref PHIEncryptionKey
+
+  # Common Lambda Layer
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${AWS::StackName}-common'
+      Description: Common utilities and dependencies
+      ContentUri: layers/common/
+      CompatibleRuntimes:
+        - nodejs20.x
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: nodejs20.x
+
+  # Import nested stacks
+  DynamoDBStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./resources/dynamodb/tables.yaml
+      Parameters:
+        Stage: !Ref Stage
+        KMSKeyId: !Ref PHIEncryptionKey
+
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./resources/s3/buckets.yaml
+      Parameters:
+        Stage: !Ref Stage
+        KMSKeyId: !Ref PHIEncryptionKey
+
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./resources/cognito/user-pool.yaml
+      Parameters:
+        Stage: !Ref Stage
+
+  APIStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./resources/api/api-gateway.yaml
+      Parameters:
+        Stage: !Ref Stage
+        UserPoolArn: !GetAtt CognitoStack.Outputs.UserPoolArn
+        DomainName: !Ref DomainName
+
+  MonitoringStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./resources/monitoring/cloudwatch.yaml
+      Parameters:
+        Stage: !Ref Stage
+        AlertEmail: !Ref AlertEmail
+        ApiId: !GetAtt APIStack.Outputs.RestApiId
+
+  SecurityStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./resources/security/waf.yaml
+      Parameters:
+        Stage: !Ref Stage
+        ApiArn: !GetAtt APIStack.Outputs.RestApiArn
+
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./resources/iam/bedrock-policy.yaml
+      Parameters:
+        Stage: !Ref Stage
+
+  # EventBridge for async processing
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub '${AWS::StackName}-event-bus'
+
+  # Dead Letter Queue for failed events
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600 # 14 days
+      KmsMasterKeyId: !Ref PHIEncryptionKey
+      Tags:
+        - Key: HIPAA
+          Value: true
+
+  # Log Groups with encryption
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${AWS::StackName}'
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt PHIEncryptionKey.Arn
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}'
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt PHIEncryptionKey.Arn
+
+  # Audit Trail
+  AuditTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: !Sub '${AWS::StackName}-audit'
+      S3BucketName: !GetAtt S3Stack.Outputs.AuditBucketName
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: true
+      EnableLogFileValidation: true
+      EventSelectors:
+        - ReadWriteType: All
+          IncludeManagementEvents: true
+          DataResources:
+            - Type: AWS::DynamoDB::Table
+              Values:
+                - !Sub '${DynamoDBStack.Outputs.MainTableArn}'
+            - Type: AWS::S3::Object
+              Values:
+                - !Sub '${S3Stack.Outputs.AudioBucketArn}/*'
+
+  # SES Configuration for email notifications
+  EmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref AlertEmail
+      DkimAttributes:
+        SigningEnabled: true
+
+  EmailTemplate:
+    Type: AWS::SES::Template
+    Properties:
+      Template:
+        TemplateName: !Sub '${AWS::StackName}-notifications'
+        SubjectPart: 'AI Scribe - {{subject}}'
+        TextPart: |
+          Hello {{name}},
+          
+          {{message}}
+          
+          Best regards,
+          AI Scribe Team
+          
+          This is an automated message from AI Scribe.
+          Please do not reply to this email.
+        HtmlPart: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background-color: #2563eb; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; background-color: #f9fafb; }
+              .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>AI Scribe</h1>
+              </div>
+              <div class="content">
+                <p>Hello {{name}},</p>
+                <p>{{message}}</p>
+                <p>Best regards,<br>AI Scribe Team</p>
+              </div>
+              <div class="footer">
+                <p>This is an automated message from AI Scribe.<br>
+                Please do not reply to this email.</p>
+                <p>© 2024 HealthSpaceAI. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+
+  ConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      Name: !Sub '${AWS::StackName}-config-set'
+      ReputationOptions:
+        ReputationMetricsEnabled: true
+      SendingOptions:
+        SendingEnabled: true
+      SuppressionOptions:
+        SuppressedReasons:
+          - BOUNCE
+          - COMPLAINT
+
+  # Parameter Store for configuration
+  JWTSecretParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${AWS::StackName}/jwt-secret'
+      Type: String
+      Value: !Sub '{{resolve:secretsmanager:${AWS::StackName}-jwt-secret:SecretString:secret}}'
+      Description: JWT signing secret
+
+  DeepgramAPIKeyParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${AWS::StackName}/deepgram-api-key'
+      Type: String
+      Value: !Sub '{{resolve:secretsmanager:${AWS::StackName}-deepgram:SecretString:api-key}}'
+      Description: Deepgram API key for transcription
+
+  BedrockModelIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${AWS::StackName}/bedrock-model-id'
+      Type: String
+      Value: 'anthropic.claude-3-sonnet-20240229-v1:0'
+      Description: AWS Bedrock model ID for note generation
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !GetAtt APIStack.Outputs.ApiUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUrl'
+
+  WebSocketUrl:
+    Description: WebSocket API URL
+    Value: !GetAtt APIStack.Outputs.WebSocketUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-WebSocketUrl'
+
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !GetAtt CognitoStack.Outputs.UserPoolId
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !GetAtt CognitoStack.Outputs.UserPoolClientId
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolClientId'
+
+  MainTableName:
+    Description: Main DynamoDB table name
+    Value: !GetAtt DynamoDBStack.Outputs.MainTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-MainTableName'
+
+  AudioBucketName:
+    Description: S3 bucket for audio files
+    Value: !GetAtt S3Stack.Outputs.AudioBucketName
+    Export:
+      Name: !Sub '${AWS::StackName}-AudioBucketName'
+
+  KMSKeyId:
+    Description: KMS key for PHI encryption
+    Value: !Ref PHIEncryptionKey
+    Export:
+      Name: !Sub '${AWS::StackName}-KMSKeyId'
+
+  EventBusName:
+    Description: EventBridge bus name
+    Value: !Ref EventBus
+    Export:
+      Name: !Sub '${AWS::StackName}-EventBusName'

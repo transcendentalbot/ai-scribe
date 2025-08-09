@@ -1,0 +1,287 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: DynamoDB tables for AI Scribe - Single Table Design
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage
+  
+  KMSKeyId:
+    Type: String
+    Description: KMS key ID for encryption
+
+Resources:
+  # Main single table for all application data
+  MainTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'ai-scribe-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      
+      # Primary key structure for single table design
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+        - AttributeName: gsi2pk
+          AttributeType: S
+        - AttributeName: gsi2sk
+          AttributeType: S
+        - AttributeName: entityType
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      
+      # Global Secondary Indexes for access patterns
+      GlobalSecondaryIndexes:
+        # GSI1: For querying by different access patterns
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        
+        # GSI2: For additional access patterns
+        - IndexName: gsi2
+          KeySchema:
+            - AttributeName: gsi2pk
+              KeyType: HASH
+            - AttributeName: gsi2sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        
+        # Entity type index for querying by entity type
+        - IndexName: entityTypeIndex
+          KeySchema:
+            - AttributeName: entityType
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      
+      # Enable encryption at rest
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref KMSKeyId
+      
+      # Enable point-in-time recovery
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      
+      # Enable streams for event-driven processing
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      
+      # TTL for automatic data expiration
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      
+      Tags:
+        - Key: HIPAA
+          Value: true
+        - Key: PHI
+          Value: true
+        - Key: Environment
+          Value: !Ref Stage
+
+  # Connection tracking table for WebSocket connections
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'ai-scribe-connections-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+      
+      GlobalSecondaryIndexes:
+        - IndexName: userIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      
+      # Connection cleanup after 24 hours
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref KMSKeyId
+      
+      Tags:
+        - Key: HIPAA
+          Value: true
+        - Key: Environment
+          Value: !Ref Stage
+
+  # Audit log table for compliance
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'ai-scribe-audit-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: action
+          AttributeType: S
+      
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      
+      GlobalSecondaryIndexes:
+        - IndexName: userActionIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        
+        - IndexName: actionIndex
+          KeySchema:
+            - AttributeName: action
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      
+      # Retain audit logs for 7 years (HIPAA requirement)
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref KMSKeyId
+      
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      
+      Tags:
+        - Key: HIPAA
+          Value: true
+        - Key: Compliance
+          Value: audit
+        - Key: Environment
+          Value: !Ref Stage
+
+  # Single Table Design Patterns Documentation
+  # ==========================================
+  # 
+  # Entity Types and Key Patterns:
+  # 
+  # 1. Users:
+  #    - pk: USER#<userId>
+  #    - sk: PROFILE
+  #    - gsi1pk: EMAIL#<email>
+  #    - gsi1sk: USER#<userId>
+  # 
+  # 2. Sessions:
+  #    - pk: USER#<userId>
+  #    - sk: SESSION#<sessionId>
+  #    - gsi1pk: SESSION#<sessionId>
+  #    - gsi1sk: USER#<userId>
+  # 
+  # 3. Patients:
+  #    - pk: PATIENT#<patientId>
+  #    - sk: PROFILE
+  #    - gsi1pk: PROVIDER#<providerId>
+  #    - gsi1sk: PATIENT#<patientId>
+  # 
+  # 4. Encounters:
+  #    - pk: PATIENT#<patientId>
+  #    - sk: ENCOUNTER#<encounterId>
+  #    - gsi1pk: PROVIDER#<providerId>
+  #    - gsi1sk: ENCOUNTER#<timestamp>
+  #    - gsi2pk: ENCOUNTER#<encounterId>
+  #    - gsi2sk: PATIENT#<patientId>
+  # 
+  # 5. Recordings:
+  #    - pk: ENCOUNTER#<encounterId>
+  #    - sk: RECORDING#<recordingId>
+  #    - gsi1pk: RECORDING#<recordingId>
+  #    - gsi1sk: ENCOUNTER#<encounterId>
+  # 
+  # 6. Transcripts:
+  #    - pk: ENCOUNTER#<encounterId>
+  #    - sk: TRANSCRIPT#<transcriptId>
+  #    - gsi1pk: TRANSCRIPT#<transcriptId>
+  #    - gsi1sk: ENCOUNTER#<encounterId>
+  # 
+  # 7. Clinical Notes:
+  #    - pk: ENCOUNTER#<encounterId>
+  #    - sk: NOTE#<noteId>
+  #    - gsi1pk: NOTE#<noteId>
+  #    - gsi1sk: ENCOUNTER#<encounterId>
+
+Outputs:
+  MainTableName:
+    Description: Name of the main DynamoDB table
+    Value: !Ref MainTable
+    Export:
+      Name: !Sub '${AWS::StackName}-MainTableName'
+  
+  MainTableArn:
+    Description: ARN of the main DynamoDB table
+    Value: !GetAtt MainTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MainTableArn'
+  
+  MainTableStreamArn:
+    Description: Stream ARN of the main DynamoDB table
+    Value: !GetAtt MainTable.StreamArn
+    Export:
+      Name: !Sub '${AWS::StackName}-MainTableStreamArn'
+  
+  ConnectionsTableName:
+    Description: Name of the connections table
+    Value: !Ref ConnectionsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ConnectionsTableName'
+  
+  AuditTableName:
+    Description: Name of the audit table
+    Value: !Ref AuditTable
+    Export:
+      Name: !Sub '${AWS::StackName}-AuditTableName'

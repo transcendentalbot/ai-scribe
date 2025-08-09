@@ -1,0 +1,321 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: WAF and security configurations for AI Scribe
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage
+  
+  ApiArn:
+    Type: String
+    Description: REST API ARN
+
+Resources:
+  # WAF Web ACL
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub 'ai-scribe-${Stage}-waf'
+      Description: WAF rules for AI Scribe API protection
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub 'ai-scribe-${Stage}-waf'
+      Rules:
+        # Rate limiting rule
+        - Name: RateLimitRule
+          Priority: 1
+          Statement:
+            RateBasedStatement:
+              Limit: 2000 # requests per 5 minutes per IP
+              AggregateKeyType: IP
+          Action:
+            Block:
+              CustomResponse:
+                ResponseCode: 429
+                CustomResponseBodyKey: RateLimitResponse
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitRule
+        
+        # AWS Managed Core Rule Set
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 2
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              ExcludedRules:
+                - Name: SizeRestrictions_BODY # Allow large audio files
+                - Name: GenericRFI_BODY # May trigger on base64 audio
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: CommonRuleSet
+        
+        # Known bad inputs rule set
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 3
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: KnownBadInputs
+        
+        # SQL injection rule set
+        - Name: AWSManagedRulesSQLiRuleSet
+          Priority: 4
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: SQLiRuleSet
+        
+        # IP reputation list
+        - Name: AWSManagedRulesAmazonIpReputationList
+          Priority: 5
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAmazonIpReputationList
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: IpReputationList
+        
+        # Geo-blocking rule (optional - adjust countries as needed)
+        - Name: GeoBlockingRule
+          Priority: 6
+          Statement:
+            GeoMatchStatement:
+              CountryCodes:
+                - CN # China
+                - RU # Russia
+                - KP # North Korea
+          Action:
+            Block:
+              CustomResponse:
+                ResponseCode: 403
+                CustomResponseBodyKey: GeoBlockResponse
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: GeoBlockingRule
+        
+        # Custom rule for API key validation
+        - Name: APIKeyValidation
+          Priority: 7
+          Statement:
+            AndStatement:
+              Statements:
+                - ByteMatchStatement:
+                    SearchString: /api/
+                    FieldToMatch:
+                      UriPath: {}
+                    TextTransformations:
+                      - Priority: 0
+                        Type: LOWERCASE
+                    PositionalConstraint: STARTS_WITH
+                - NotStatement:
+                    Statement:
+                      ByteMatchStatement:
+                        SearchString: x-api-key
+                        FieldToMatch:
+                          SingleHeader:
+                            Name: x-api-key
+                        TextTransformations:
+                          - Priority: 0
+                            Type: LOWERCASE
+                        PositionalConstraint: EXACTLY
+          Action:
+            Block:
+              CustomResponse:
+                ResponseCode: 401
+                CustomResponseBodyKey: MissingApiKeyResponse
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: APIKeyValidation
+      
+      CustomResponseBodies:
+        RateLimitResponse:
+          ContentType: APPLICATION_JSON
+          Content: '{"error": "Too many requests. Please try again later."}'
+        GeoBlockResponse:
+          ContentType: APPLICATION_JSON
+          Content: '{"error": "Access denied from your location."}'
+        MissingApiKeyResponse:
+          ContentType: APPLICATION_JSON
+          Content: '{"error": "Missing or invalid API key."}'
+      
+      Tags:
+        - Key: Name
+          Value: !Sub 'ai-scribe-${Stage}-waf'
+        - Key: Environment
+          Value: !Ref Stage
+
+  # Associate WAF with API Gateway
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      WebACLArn: !GetAtt WebACL.Arn
+      ResourceArn: !Ref ApiArn
+
+  # IP Set for allowlisting (optional)
+  AllowedIPSet:
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      Name: !Sub 'ai-scribe-${Stage}-allowed-ips'
+      Description: Allowed IP addresses for AI Scribe
+      Scope: REGIONAL
+      IPAddressVersion: IPV4
+      Addresses: []  # Add trusted IPs here if needed
+      Tags:
+        - Key: Name
+          Value: !Sub 'ai-scribe-${Stage}-allowed-ips'
+
+  # IP Set for blocklisting
+  BlockedIPSet:
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      Name: !Sub 'ai-scribe-${Stage}-blocked-ips'
+      Description: Blocked IP addresses for AI Scribe
+      Scope: REGIONAL
+      IPAddressVersion: IPV4
+      Addresses: []  # Add malicious IPs here as needed
+      Tags:
+        - Key: Name
+          Value: !Sub 'ai-scribe-${Stage}-blocked-ips'
+
+  # Logging configuration
+  WAFLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/wafv2/${Stage}/ai-scribe'
+      RetentionInDays: 30
+
+  WAFLoggingConfiguration:
+    Type: AWS::WAFv2::LoggingConfiguration
+    Properties:
+      ResourceArn: !GetAtt WebACL.Arn
+      LogDestinationConfigs:
+        - !GetAtt WAFLogGroup.Arn
+
+  # CloudWatch dashboard for WAF metrics
+  WAFDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'ai-scribe-${Stage}-waf'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/WAFV2", "AllowedRequests", "WebACL", "${WebACL}", "Region", "${AWS::Region}", "Rule", "ALL" ],
+                  [ ".", "BlockedRequests", ".", ".", ".", ".", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "WAF Allowed vs Blocked Requests",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/WAFV2", "BlockedRequests", "WebACL", "${WebACL}", "Region", "${AWS::Region}", "Rule", "RateLimitRule" ],
+                  [ "...", "GeoBlockingRule" ],
+                  [ "...", "APIKeyValidation" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Blocked Requests by Rule",
+                "period": 300
+              }
+            }
+          ]
+        }
+
+  # Security Headers Response Policy for CloudFront
+  ResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub 'ai-scribe-${Stage}-security-headers'
+        Comment: Security headers for AI Scribe
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 63072000 # 2 years
+            IncludeSubdomains: true
+            Preload: true
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          XSSProtection:
+            ModeBlock: true
+            Protection: true
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com; frame-ancestors 'none';"
+            Override: true
+        CustomHeadersConfig:
+          Items:
+            - Header: Permissions-Policy
+              Value: "camera=(), microphone=(self), geolocation=(), payment=()"
+              Override: true
+
+Outputs:
+  WebACLId:
+    Description: WAF Web ACL ID
+    Value: !Ref WebACL
+    Export:
+      Name: !Sub '${AWS::StackName}-WebACLId'
+  
+  WebACLArn:
+    Description: WAF Web ACL ARN
+    Value: !GetAtt WebACL.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-WebACLArn'
+  
+  ResponseHeadersPolicyId:
+    Description: CloudFront Response Headers Policy ID
+    Value: !Ref ResponseHeadersPolicy
+    Export:
+      Name: !Sub '${AWS::StackName}-ResponseHeadersPolicyId'
