@@ -40,6 +40,12 @@ api.interceptors.response.use(
           // Handle the wrapped response structure
           const tokens = response.data?.data?.tokens || response.data?.tokens;
           
+          debugLog('API', 'Extracted tokens from refresh', { 
+            hasTokens: !!tokens, 
+            hasAccessToken: !!tokens?.accessToken,
+            tokenKeys: tokens ? Object.keys(tokens) : []
+          });
+          
           if (!tokens?.accessToken) {
             throw new Error('Invalid refresh response structure');
           }
@@ -51,6 +57,11 @@ api.interceptors.response.use(
           
           // Retry original request
           error.config.headers.Authorization = `Bearer ${tokens.accessToken}`;
+          debugLog('API', 'Retrying request with new token', {
+            url: error.config.url,
+            hasToken: !!tokens.accessToken,
+            tokenPrefix: tokens.accessToken?.substring(0, 20) + '...'
+          });
           return api(error.config);
         }
       } catch (refreshError) {
