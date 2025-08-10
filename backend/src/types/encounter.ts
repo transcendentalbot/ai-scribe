@@ -27,7 +27,7 @@ export const EncounterSchema = z.object({
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
   status: z.nativeEnum(EncounterStatus),
-  type: z.enum(['INITIAL', 'FOLLOW_UP', 'URGENT', 'ROUTINE', 'TELEHEALTH']),
+  type: z.enum(['NEW_PATIENT', 'FOLLOW_UP', 'SICK_VISIT', 'WELLNESS_CHECK']),
   chiefComplaint: z.string().optional(),
   reasonForVisit: z.string().optional(),
   location: z.object({
@@ -86,16 +86,11 @@ export const EncounterSchema = z.object({
 });
 
 export const CreateEncounterSchema = z.object({
-  patientId: z.string().uuid(),
-  scheduledAt: z.string(),
-  type: z.enum(['INITIAL', 'FOLLOW_UP', 'URGENT', 'ROUTINE', 'TELEHEALTH']),
-  chiefComplaint: z.string().optional(),
-  reasonForVisit: z.string().optional(),
-  location: z.object({
-    facilityName: z.string(),
-    roomNumber: z.string().optional(),
-    department: z.string().optional(),
-  }).optional(),
+  patientId: z.string().uuid().optional(), // Optional for new patient creation
+  patientName: z.string().min(1, 'Patient name is required').optional(),
+  patientMRN: z.string().min(1, 'MRN is required').optional(),
+  type: z.enum(['NEW_PATIENT', 'FOLLOW_UP', 'SICK_VISIT', 'WELLNESS_CHECK']),
+  consentObtained: z.boolean().default(false),
 });
 
 export const UpdateEncounterSchema = CreateEncounterSchema.partial().extend({

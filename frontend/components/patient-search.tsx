@@ -31,7 +31,7 @@ export function PatientSearch({ onSelectPatient }: PatientSearchProps) {
 
   const { data, isLoading } = useQuery({
     queryKey: ['patients', 'search', query],
-    queryFn: () => patientApi.search(query),
+    queryFn: () => patientApi.search({ query }),
     enabled: query.length >= 2,
   });
 

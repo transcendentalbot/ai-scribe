@@ -79,8 +79,8 @@ api.interceptors.response.use(
 
 // API methods
 export const patientApi = {
-  search: async (query: string) => {
-    const { data } = await api.get<{ patients: Patient[] }>(`/patients/search?query=${query}`);
+  search: async ({ query, searchType = 'name' }: { query: string; searchType?: 'name' | 'mrn' }) => {
+    const { data } = await api.get<{ patients: Patient[] }>(`/patients/search?query=${query}&searchType=${searchType}`);
     return data;
   },
   
@@ -114,11 +114,11 @@ export const encounterApi = {
   },
   
   create: async (encounter: {
-    patientId: string;
-    scheduledAt: string;
-    type: Encounter['type'];
-    chiefComplaint?: string;
-    reasonForVisit?: string;
+    patientId?: string;
+    patientName?: string;
+    patientMRN?: string;
+    type: 'NEW_PATIENT' | 'FOLLOW_UP' | 'SICK_VISIT' | 'WELLNESS_CHECK';
+    consentObtained: boolean;
   }) => {
     const { data } = await api.post<{ encounter: Encounter }>('/encounters', encounter);
     return data;

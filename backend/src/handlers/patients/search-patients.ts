@@ -10,6 +10,7 @@ import { logger } from '../../utils/logger';
 import { metrics } from '../../utils/metrics';
 import { cognitoService } from '../../utils/cognito';
 import { AuthorizationError } from '../../errors';
+import jwt from 'jsonwebtoken';
 
 const dynamoClient = new DynamoDBClient({});
 const dynamodb = DynamoDBDocumentClient.from(dynamoClient);
@@ -20,8 +21,9 @@ const searchPatientsHandler = async (event: APIGatewayProxyEvent, context: Conte
   
   // Get provider ID from token
   const token = getAuthToken(event);
-  const user = await cognitoService.getUser(token);
-  const providerId = user.UserAttributes?.find(attr => attr.Name === 'custom:user_id')?.Value;
+  // Decode the access token to get the user ID
+  const decodedToken = jwt.decode(token) as any;
+  const providerId = decodedToken?.sub || decodedToken?.username;
   
   if (!providerId) {
     throw new AuthorizationError('Provider ID not found');

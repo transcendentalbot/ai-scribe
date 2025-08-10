@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Calendar, Clock, Users, Activity } from 'lucide-react';
+import { Calendar, Clock, Users, Activity, Plus } from 'lucide-react';
 import { encounterApi } from '@/lib/api';
 import { EncounterCard } from '@/components/encounter-card';
 import { PatientSearch } from '@/components/patient-search';
 import { StatusSummary } from '@/components/status-summary';
+import { NewEncounterDialog } from '@/components/new-encounter-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ProtectedRoute } from '@/components/protected-route';
@@ -22,6 +23,7 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const [selectedDate] = useState(new Date());
+  const [showNewEncounter, setShowNewEncounter] = useState(false);
   
   const { data, isLoading, error } = useQuery({
     queryKey: ['encounters', 'daily', format(selectedDate, 'yyyy-MM-dd')],
@@ -47,7 +49,10 @@ function DashboardContent() {
                 // Navigate to patient detail or create new encounter
                 console.log('Selected patient:', patient);
               }} />
-              <Button disabled className="opacity-50 cursor-not-allowed">New Encounter (Coming Soon)</Button>
+              <Button onClick={() => setShowNewEncounter(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                New Encounter
+              </Button>
             </div>
           </div>
         </div>
@@ -107,6 +112,12 @@ function DashboardContent() {
           )}
         </Card>
       </main>
+
+      {/* New Encounter Dialog */}
+      <NewEncounterDialog
+        open={showNewEncounter}
+        onOpenChange={setShowNewEncounter}
+      />
     </div>
   );
 }
