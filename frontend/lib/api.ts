@@ -1,15 +1,11 @@
 import axios from 'axios';
 import { Encounter, Patient, EncounterStatus, ConsentType } from '@/types';
+import { debugLog } from '@/utils/debug-logger';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://gy8gxc5m3c.execute-api.us-east-1.amazonaws.com/prod';
 
-// Use proxy in production to bypass CORS temporarily
-const baseURL = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
-  ? '/api/proxy' 
-  : API_BASE_URL;
-
 export const api = axios.create({
-  baseURL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,25 +24,32 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      // Token expired, try to refresh
+    debugLog('API', 'Response error', { status: error.response?.status, url: error.config?.url });
+    if (error.response?.status === 401 && !error.config?._retry) {
+      debugLog('API', '401 error, attempting token refresh');
+      error.config._retry = true;
+      
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
           const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
             refreshToken,
           });
+          debugLog('API', 'Token refresh successful');
           localStorage.setItem('accessToken', data.tokens.accessToken);
           localStorage.setItem('idToken', data.tokens.idToken);
           
           // Retry original request
           error.config.headers.Authorization = `Bearer ${data.tokens.accessToken}`;
-          return axios(error.config);
+          return api(error.config);
         }
-      } catch {
-        // Refresh failed, redirect to login
-        localStorage.clear();
-        window.location.href = '/login';
+      } catch (refreshError) {
+        debugLog('API', 'Token refresh failed, clearing storage', refreshError);
+        // Don't redirect here, let the auth context handle it
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('idToken');
+        localStorage.removeItem('user');
       }
     }
     return Promise.reject(error);
