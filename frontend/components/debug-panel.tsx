@@ -66,7 +66,7 @@ export function DebugPanel() {
                 <span className="text-gray-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
               </div>
               <div className="text-gray-700">{log.message}</div>
-              {log.data && (
+              {!!log.data && (
                 <pre className="mt-1 text-gray-600 overflow-x-auto">
                   {JSON.stringify(log.data, null, 2)}
                 </pre>
