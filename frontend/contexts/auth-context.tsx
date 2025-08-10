@@ -136,7 +136,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }, 100);
     } catch (error) {
       debugLog('AUTH', 'Login failed', error);
-      throw new Error((error as any).response?.data?.message || 'Login failed');
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || 'Login failed');
+      }
+      throw new Error('Login failed');
     }
   };
 
@@ -153,7 +156,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // For now, redirect to login page
       router.push('/login?message=Please check your email for verification code');
     } catch (error) {
-      throw new Error((error as any).response?.data?.message || 'Signup failed');
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || 'Signup failed');
+      }
+      throw new Error('Signup failed');
     }
   };
 

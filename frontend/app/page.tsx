@@ -10,8 +10,17 @@ import { PatientSearch } from '@/components/patient-search';
 import { StatusSummary } from '@/components/status-summary';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ProtectedRoute } from '@/components/protected-route';
 
 export default function DashboardPage() {
+  return (
+    <ProtectedRoute>
+      <DashboardContent />
+    </ProtectedRoute>
+  );
+}
+
+function DashboardContent() {
   const [selectedDate] = useState(new Date());
   
   const { data, isLoading, error } = useQuery({
@@ -38,7 +47,7 @@ export default function DashboardPage() {
                 // Navigate to patient detail or create new encounter
                 console.log('Selected patient:', patient);
               }} />
-              <Button>New Encounter</Button>
+              <Button disabled className="opacity-50 cursor-not-allowed">New Encounter (Coming Soon)</Button>
             </div>
           </div>
         </div>

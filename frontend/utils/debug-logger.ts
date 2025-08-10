@@ -1,5 +1,5 @@
 // Debug logger that persists across page reloads
-export const debugLog = (category: string, message: string, data?: any) => {
+export const debugLog = (category: string, message: string, data?: unknown) => {
   const timestamp = new Date().toISOString();
   const logEntry = {
     timestamp,
@@ -39,7 +39,7 @@ export const clearDebugLogs = () => {
 
 // Add this to window for easy console access
 if (typeof window !== 'undefined') {
-  (window as any).getDebugLogs = getDebugLogs;
-  (window as any).clearDebugLogs = clearDebugLogs;
+  (window as Window & { getDebugLogs?: typeof getDebugLogs; clearDebugLogs?: typeof clearDebugLogs }).getDebugLogs = getDebugLogs;
+  (window as Window & { getDebugLogs?: typeof getDebugLogs; clearDebugLogs?: typeof clearDebugLogs }).clearDebugLogs = clearDebugLogs;
   console.log('Debug logger ready. Use window.getDebugLogs() to see persisted logs.');
 }

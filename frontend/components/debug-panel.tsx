@@ -3,8 +3,16 @@
 import { useState, useEffect } from 'react';
 import { getDebugLogs, clearDebugLogs } from '@/utils/debug-logger';
 
+interface DebugLog {
+  timestamp: string;
+  category: string;
+  message: string;
+  data?: unknown;
+  url: string;
+}
+
 export function DebugPanel() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<DebugLog[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {

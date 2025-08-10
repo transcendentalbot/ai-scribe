@@ -35,7 +35,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // Decode the ID token to get user information
     const idToken = authResult.AuthenticationResult.IdToken!;
     const decodedToken = jwt.decode(idToken) as any;
-    const userId = decodedToken['custom:user_id'];
+    const userId = decodedToken['custom:provider_id'] || decodedToken['custom:user_id'] || decodedToken.sub;
 
     // Get user from DynamoDB
     const user = await userService.getUser(userId);

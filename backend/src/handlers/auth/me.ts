@@ -26,33 +26,37 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     // Extract user ID from Cognito attributes
     const userIdAttribute = cognitoUser.UserAttributes?.find(
-      attr => attr.Name === 'custom:user_id'
+      attr => attr.Name === 'custom:provider_id' || attr.Name === 'custom:user_id'
     );
     
-    if (!userIdAttribute?.Value) {
+    const userId = userIdAttribute?.Value || cognitoUser.Username;
+    
+    if (!userId) {
       throw new AppError('User ID not found', 500);
     }
 
     // Get user from DynamoDB
-    const user = await userService.getUser(userIdAttribute.Value);
+    const user = await userService.getUser(userId);
     if (!user) {
       throw new AppError('User not found', 404);
     }
 
     // Return user data
     return response.success({
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phoneNumber: user.phoneNumber,
-      licenseNumber: user.licenseNumber,
-      specialty: user.specialty,
-      organization: user.organization,
-      emailVerified: user.emailVerified,
-      mfaEnabled: user.mfaEnabled,
-      createdAt: user.createdAt,
-      lastLoginAt: user.lastLoginAt,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phoneNumber: user.phoneNumber,
+        licenseNumber: user.licenseNumber,
+        specialty: user.specialty,
+        organization: user.organization,
+        emailVerified: user.emailVerified,
+        mfaEnabled: user.mfaEnabled,
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
+      }
     });
 
   } catch (error: any) {
