@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, AlertCircle, UserPlus } from 'lucide-react';
 import {
   Dialog,
@@ -40,6 +40,7 @@ const ENCOUNTER_TYPES = [
 
 export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'mrn'>('name');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -61,6 +62,8 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
   const createEncounterMutation = useMutation({
     mutationFn: encounterApi.create,
     onSuccess: (data) => {
+      // Invalidate encounters query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['encounters'] });
       onOpenChange(false);
       router.push(`/encounters/${data.encounter.id}`);
     },
