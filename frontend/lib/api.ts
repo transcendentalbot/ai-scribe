@@ -101,11 +101,14 @@ export const encounterApi = {
     if (date) params.append('date', date);
     if (providerId) params.append('providerId', providerId);
     
-    const { data } = await api.get<{ 
-      encounters: Encounter[]; 
-      summary: { total: number; byStatus: Record<string, number> } 
+    const response = await api.get<{ 
+      success: boolean;
+      data: {
+        encounters: Encounter[]; 
+        summary: { total: number; byStatus: Record<string, number> } 
+      }
     }>(`/encounters/daily?${params}`);
-    return data;
+    return response.data.data;
   },
   
   getById: async (id: string) => {

@@ -65,7 +65,8 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
       // Invalidate encounters query to refresh the list
       queryClient.invalidateQueries({ queryKey: ['encounters'] });
       onOpenChange(false);
-      router.push(`/encounters/${data.encounter.id}`);
+      // Stay on dashboard to see the new encounter in the list
+      // router.push(`/encounters/${data.encounter.id}`);
     },
     onError: (error: unknown) => {
       if (error && typeof error === 'object' && 'response' in error) {
