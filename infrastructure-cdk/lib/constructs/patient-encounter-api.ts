@@ -58,6 +58,7 @@ export class PatientEncounterApi extends Construct {
     // Encounter handlers
     const encounterHandlers = [
       { name: 'create-encounter', path: 'encounters', method: 'POST' },
+      { name: 'get-encounter', path: 'encounters/{encounterId}', method: 'GET' },
       { name: 'update-encounter-status', path: 'encounters/{encounterId}/status', method: 'PUT' },
       { name: 'capture-consent', path: 'encounters/{encounterId}/consent', method: 'POST' },
       { name: 'get-daily-encounters', path: 'encounters/daily', method: 'GET' },
