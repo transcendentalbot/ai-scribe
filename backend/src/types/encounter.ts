@@ -91,6 +91,7 @@ export const CreateEncounterSchema = z.object({
   patientMRN: z.string().min(1, 'MRN is required').optional(),
   type: z.enum(['NEW_PATIENT', 'FOLLOW_UP', 'SICK_VISIT', 'WELLNESS_CHECK']),
   consentObtained: z.boolean().default(false),
+  scheduledAt: z.string().optional(), // Optional for immediate encounters
 });
 
 export const UpdateEncounterSchema = CreateEncounterSchema.partial().extend({

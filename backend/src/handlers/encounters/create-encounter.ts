@@ -88,8 +88,10 @@ const createEncounterHandler = async (event: APIGatewayProxyEvent, context: Cont
 
   // Create encounter with the resolved patient ID
   const encounter = await encounterService.createEncounter({
-    ...encounterData,
+    type: encounterData.type,
+    consentObtained: encounterData.consentObtained || false,
     patientId,
+    scheduledAt: new Date().toISOString(), // Set to now for immediate encounters
   }, providerId);
 
   // Log PHI access

@@ -25,12 +25,15 @@ export class EncounterService {
   async createEncounter(input: CreateEncounterInput, providerId: string): Promise<Encounter> {
     const encounterId = uuidv4();
     const timestamp = new Date().toISOString();
-    const scheduledDate = input.scheduledAt.split('T')[0]; // Extract date part
+    const scheduledAt = input.scheduledAt || timestamp; // Use provided time or current time
+    const scheduledDate = scheduledAt.split('T')[0]; // Extract date part
 
     const encounter: Encounter = {
       ...input,
       id: encounterId,
+      patientId: input.patientId!, // We validate this exists in the handler
       providerId,
+      scheduledAt,
       status: EncounterStatus.SCHEDULED,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -42,12 +45,12 @@ export class EncounterService {
       ...encounter,
       pk: `ENCOUNTER#${encounterId}`,
       sk: 'METADATA',
-      gsi1pk: `PATIENT#${input.patientId}`,
-      gsi1sk: `ENCOUNTER#${input.scheduledAt}#${encounterId}`,
+      gsi1pk: `PATIENT#${encounter.patientId}`,
+      gsi1sk: `ENCOUNTER#${scheduledAt}#${encounterId}`,
       gsi2pk: `PROVIDER#${providerId}#DATE#${scheduledDate}`,
-      gsi2sk: `ENCOUNTER#${input.scheduledAt}#${encounterId}`,
+      gsi2sk: `ENCOUNTER#${scheduledAt}#${encounterId}`,
       gsi3pk: `DATE#${scheduledDate}`,
-      gsi3sk: `ENCOUNTER#${input.scheduledAt}#${encounterId}`,
+      gsi3sk: `ENCOUNTER#${scheduledAt}#${encounterId}`,
       entityType: 'ENCOUNTER',
     };
 
@@ -63,7 +66,7 @@ export class EncounterService {
       encounterId,
       patientId: input.patientId,
       providerId,
-      scheduledAt: input.scheduledAt,
+      scheduledAt: scheduledAt,
     });
 
     metrics.count('EncounterCreated', 1, 'Count', { Type: input.type });
