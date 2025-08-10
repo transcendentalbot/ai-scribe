@@ -73,7 +73,7 @@ const createEncounterHandler = async (event: APIGatewayProxyEvent, context: Cont
         firstName: encounterData.patientName.split(' ')[0] || encounterData.patientName,
         lastName: encounterData.patientName.split(' ').slice(1).join(' ') || '',
         mrn: encounterData.patientMRN,
-        dateOfBirth: '1900-01-01', // Placeholder for MVP
+        dateOfBirth: encounterData.patientBirthdate || '1900-01-01', // Use provided birthdate or placeholder
         gender: 'Unknown',
         encryptedName: encryptPHI(encounterData.patientName),
         encryptedMrn: encryptPHI(encounterData.patientMRN),

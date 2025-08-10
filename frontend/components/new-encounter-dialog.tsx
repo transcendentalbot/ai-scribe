@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, AlertCircle, UserPlus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Search, AlertCircle, UserPlus, Calendar } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -39,14 +39,15 @@ const ENCOUNTER_TYPES = [
 ];
 
 export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogProps) {
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'mrn'>('name');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isNewPatient, setIsNewPatient] = useState(false);
   const [newPatientName, setNewPatientName] = useState('');
   const [newPatientMRN, setNewPatientMRN] = useState('');
+  const [newPatientBirthdate, setNewPatientBirthdate] = useState('');
   const [encounterType, setEncounterType] = useState('NEW_PATIENT');
   const [consentObtained, setConsentObtained] = useState(false);
   const [error, setError] = useState('');
@@ -65,8 +66,10 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
       // Invalidate encounters query to refresh the list
       queryClient.invalidateQueries({ queryKey: ['encounters'] });
       onOpenChange(false);
-      // Stay on dashboard to see the new encounter in the list
-      // router.push(`/encounters/${data.encounter.id}`);
+      // Navigate to the encounter detail page
+      if (data?.encounter?.id) {
+        router.push(`/encounters/${data.encounter.id}`);
+      }
     },
     onError: (error: unknown) => {
       if (error && typeof error === 'object' && 'response' in error) {
@@ -92,8 +95,8 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
       return;
     }
 
-    if (isNewPatient && (!newPatientName || !newPatientMRN)) {
-      setError('Please enter patient name and MRN');
+    if (isNewPatient && (!newPatientName || !newPatientMRN || !newPatientBirthdate)) {
+      setError('Please enter patient name, MRN, and birthdate');
       return;
     }
 
@@ -104,6 +107,7 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
         ? {
             patientName: newPatientName,
             patientMRN: newPatientMRN,
+            patientBirthdate: newPatientBirthdate,
           }
         : {
             patientId: selectedPatient!.id,
@@ -119,6 +123,7 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
     setIsNewPatient(false);
     setNewPatientName('');
     setNewPatientMRN('');
+    setNewPatientBirthdate('');
     setEncounterType('NEW_PATIENT');
     setConsentObtained(false);
     setError('');
@@ -243,6 +248,20 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
                       onChange={(e) => setNewPatientMRN(e.target.value)}
                       required
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="patientBirthdate">Date of Birth</Label>
+                    <div className="relative">
+                      <Input
+                        id="patientBirthdate"
+                        type="date"
+                        value={newPatientBirthdate}
+                        onChange={(e) => setNewPatientBirthdate(e.target.value)}
+                        required
+                        className="pl-10"
+                      />
+                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    </div>
                   </div>
                 </div>
               </>

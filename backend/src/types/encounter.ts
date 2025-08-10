@@ -89,6 +89,7 @@ export const CreateEncounterSchema = z.object({
   patientId: z.string().uuid().optional(), // Optional for new patient creation
   patientName: z.string().min(1, 'Patient name is required').optional(),
   patientMRN: z.string().min(1, 'MRN is required').optional(),
+  patientBirthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional(),
   type: z.enum(['NEW_PATIENT', 'FOLLOW_UP', 'SICK_VISIT', 'WELLNESS_CHECK']),
   consentObtained: z.boolean().default(false),
   scheduledAt: z.string().optional(), // Optional for immediate encounters

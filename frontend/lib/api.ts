@@ -120,6 +120,7 @@ export const encounterApi = {
     patientId?: string;
     patientName?: string;
     patientMRN?: string;
+    patientBirthdate?: string;
     type: 'NEW_PATIENT' | 'FOLLOW_UP' | 'SICK_VISIT' | 'WELLNESS_CHECK';
     consentObtained: boolean;
   }) => {
