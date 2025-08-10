@@ -112,8 +112,8 @@ export const encounterApi = {
   },
   
   getById: async (id: string) => {
-    const { data } = await api.get<{ encounter: Encounter }>(`/encounters/${id}`);
-    return data;
+    const response = await api.get<{ success: boolean; data: { encounter: Encounter } }>(`/encounters/${id}`);
+    return response.data.data;
   },
   
   create: async (encounter: {
@@ -124,16 +124,16 @@ export const encounterApi = {
     type: 'NEW_PATIENT' | 'FOLLOW_UP' | 'SICK_VISIT' | 'WELLNESS_CHECK';
     consentObtained: boolean;
   }) => {
-    const { data } = await api.post<{ encounter: Encounter }>('/encounters', encounter);
-    return data;
+    const response = await api.post<{ success: boolean; data: { encounter: Encounter } }>('/encounters', encounter);
+    return response.data.data;
   },
   
   updateStatus: async (id: string, status: EncounterStatus, notes?: string) => {
-    const { data } = await api.put<{ encounter: Encounter }>(`/encounters/${id}/status`, {
+    const response = await api.put<{ success: boolean; data: { encounter: Encounter } }>(`/encounters/${id}/status`, {
       status,
       notes,
     });
-    return data;
+    return response.data.data;
   },
   
   captureConsent: async (id: string, consent: {
@@ -141,7 +141,7 @@ export const encounterApi = {
     granted: boolean;
     notes?: string;
   }) => {
-    const { data } = await api.post<{ encounter: Encounter }>(`/encounters/${id}/consent`, consent);
-    return data;
+    const response = await api.post<{ success: boolean; data: { encounter: Encounter } }>(`/encounters/${id}/consent`, consent);
+    return response.data.data;
   },
 };

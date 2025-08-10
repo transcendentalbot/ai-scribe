@@ -63,12 +63,15 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
   const createEncounterMutation = useMutation({
     mutationFn: encounterApi.create,
     onSuccess: (data) => {
+      console.log('Create encounter response:', data);
       // Invalidate encounters query to refresh the list
       queryClient.invalidateQueries({ queryKey: ['encounters'] });
       onOpenChange(false);
       // Navigate to the encounter detail page
       if (data?.encounter?.id) {
         router.push(`/encounters/${data.encounter.id}`);
+      } else {
+        console.error('No encounter ID in response:', data);
       }
     },
     onError: (error: unknown) => {
