@@ -32,15 +32,25 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
-          const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
             refreshToken,
           });
-          debugLog('API', 'Token refresh successful');
-          localStorage.setItem('accessToken', data.tokens.accessToken);
-          localStorage.setItem('idToken', data.tokens.idToken);
+          debugLog('API', 'Token refresh response', response.data);
+          
+          // Handle the wrapped response structure
+          const tokens = response.data?.data?.tokens || response.data?.tokens;
+          
+          if (!tokens?.accessToken) {
+            throw new Error('Invalid refresh response structure');
+          }
+          
+          localStorage.setItem('accessToken', tokens.accessToken);
+          localStorage.setItem('idToken', tokens.idToken);
+          // Keep the existing refresh token since backend doesn't return a new one
+          localStorage.setItem('refreshToken', refreshToken);
           
           // Retry original request
-          error.config.headers.Authorization = `Bearer ${data.tokens.accessToken}`;
+          error.config.headers.Authorization = `Bearer ${tokens.accessToken}`;
           return api(error.config);
         }
       } catch (refreshError) {

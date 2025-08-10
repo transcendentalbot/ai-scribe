@@ -39,11 +39,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshToken,
       });
 
-      const { tokens, user } = response.data.data || response.data;
+      const responseData = response.data.data || response.data;
+      const tokens = responseData.tokens;
+      
+      if (!tokens?.accessToken) {
+        throw new Error('Invalid refresh response');
+      }
+      
       localStorage.setItem('accessToken', tokens.accessToken);
-      localStorage.setItem('refreshToken', tokens.refreshToken);
+      localStorage.setItem('refreshToken', refreshToken); // Keep existing refresh token
       localStorage.setItem('idToken', tokens.idToken);
-      setUser(user);
+      
+      // Refresh doesn't return user data, so keep existing user
+      const existingUser = localStorage.getItem('user');
+      if (existingUser) {
+        setUser(JSON.parse(existingUser));
+      }
     } catch (error) {
       localStorage.clear();
       setUser(null);
