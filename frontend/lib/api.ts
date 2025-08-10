@@ -13,7 +13,7 @@ export const api = axios.create({
 
 // Add auth token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
+  const token = localStorage.getItem('idToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -56,11 +56,11 @@ api.interceptors.response.use(
           localStorage.setItem('refreshToken', refreshToken);
           
           // Retry original request
-          error.config.headers.Authorization = `Bearer ${tokens.accessToken}`;
+          error.config.headers.Authorization = `Bearer ${tokens.idToken}`;
           debugLog('API', 'Retrying request with new token', {
             url: error.config.url,
-            hasToken: !!tokens.accessToken,
-            tokenPrefix: tokens.accessToken?.substring(0, 20) + '...'
+            hasToken: !!tokens.idToken,
+            tokenPrefix: tokens.idToken?.substring(0, 20) + '...'
           });
           return api(error.config);
         }
