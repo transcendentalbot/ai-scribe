@@ -73,6 +73,15 @@ export function RecordingInterface({
       stopRecording();
       // If no session ID exists, the hook will handle cleanup
       // and call onToggleRecording through onRecordingStop callback
+      
+      // Force cleanup after 5 seconds if no response
+      setTimeout(() => {
+        if (isProcessing && (isRecording || externalIsRecording)) {
+          console.error('Force stopping recording due to timeout');
+          setIsProcessing(false);
+          onToggleRecording();
+        }
+      }, 5000);
     } catch (error) {
       console.error('Error stopping recording:', error);
       setIsProcessing(false);
@@ -139,7 +148,7 @@ export function RecordingInterface({
 
         {/* Control Buttons */}
         <div className="flex items-center justify-center gap-4">
-          {!isRecording ? (
+          {!isRecording && !externalIsRecording ? (
             <Button
               size="lg"
               onClick={onToggleRecording}
@@ -155,7 +164,7 @@ export function RecordingInterface({
                 size="lg"
                 variant="outline"
                 onClick={() => isPaused ? resumeRecording() : pauseRecording()}
-                disabled={isProcessing}
+                disabled={isProcessing || (!isRecording && !externalIsRecording)}
               >
                 {isPaused ? (
                   <>
@@ -213,6 +222,31 @@ export function RecordingInterface({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Emergency Reset Button - Only show when recording seems stuck */}
+        {(externalIsRecording || isRecording) && !isProcessing && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => {
+                if (confirm('Force stop recording? This will reset the recording state.')) {
+                  // Force stop everything
+                  stopRecording();
+                  setIsProcessing(false);
+                  onToggleRecording();
+                  // Reload the page as last resort
+                  setTimeout(() => {
+                    if (externalIsRecording || isRecording) {
+                      window.location.reload();
+                    }
+                  }, 1000);
+                }
+              }}
+              className="text-xs text-red-600 underline hover:text-red-800"
+            >
+              Recording stuck? Click here to force reset
+            </button>
+          </div>
+        )}
 
         {/* Recording Status */}
         {isRecording && (
