@@ -44,21 +44,27 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       wsRef.current = new WebSocket(urlRef.current);
 
       wsRef.current.onopen = () => {
-        console.log('WebSocket connected');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('WebSocket connected');
+        }
         setIsConnected(true);
         setReconnectCount(0);
         onOpen?.();
       };
 
       wsRef.current.onclose = () => {
-        console.log('WebSocket disconnected');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('WebSocket disconnected');
+        }
         setIsConnected(false);
         onClose?.();
 
         // Attempt reconnection
         if (reconnectCount < maxReconnectAttempts) {
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`Reconnecting... (attempt ${reconnectCount + 1}/${maxReconnectAttempts})`);
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`Reconnecting... (attempt ${reconnectCount + 1}/${maxReconnectAttempts})`);
+            }
             setReconnectCount(prev => prev + 1);
             connect();
           }, reconnectInterval);
@@ -97,7 +103,10 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
 
   const sendMessage = useCallback((data: any) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('Sending WebSocket message:', data.action || 'default', { sessionId: data.sessionId, hasChunk: !!data.chunk });
+      // Only log non-chunk messages or every 10th chunk in development
+      if (process.env.NODE_ENV === 'development' && (data.type !== 'audio-chunk' || data.sequenceNumber % 10 === 0)) {
+        console.log('Sending WebSocket message:', data.action || 'default', { type: data.type, sessionId: data.sessionId });
+      }
       wsRef.current.send(JSON.stringify(data));
     } else {
       console.error('WebSocket is not connected');

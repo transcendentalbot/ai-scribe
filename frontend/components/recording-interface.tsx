@@ -34,10 +34,10 @@ export function RecordingInterface({
   } = useAudioRecording({
     encounterId,
     onRecordingStart: () => {
-      console.log('Recording started');
+      // Recording started
     },
     onRecordingStop: (recordingId) => {
-      console.log('Recording stopped:', recordingId);
+      // Recording stopped
       toast.success('Recording saved successfully');
       setIsProcessing(false);
       onToggleRecording();
@@ -55,6 +55,7 @@ export function RecordingInterface({
     } else if (!externalIsRecording && isRecording) {
       handleStop();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalIsRecording]);
 
   const formatDuration = (seconds: number) => {
@@ -68,7 +69,15 @@ export function RecordingInterface({
 
   const handleStop = async () => {
     setIsProcessing(true);
-    stopRecording();
+    try {
+      stopRecording();
+      // If no session ID exists, the hook will handle cleanup
+      // and call onToggleRecording through onRecordingStop callback
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      setIsProcessing(false);
+      onToggleRecording();
+    }
   };
 
   const getAudioQualityStatus = () => {

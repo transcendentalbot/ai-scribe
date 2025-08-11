@@ -42,34 +42,55 @@ export const useAudioRecording = ({
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { sendMessage, isConnected, lastMessage } = useWebSocket();
+  
+  // Debug logging utility - only logs in development
+  const debugLog = (message: string, ...args: any[]) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Audio] ${message}`, ...args);
+    }
+  };
 
   // Handle WebSocket messages
   useEffect(() => {
     if (!lastMessage) return;
 
     const message = JSON.parse(lastMessage.data);
-    console.log('[WebSocket] Received message:', message.type, message);
+    // Only log errors in production
+    if (message.type === 'error') {
+      console.error('[WebSocket] Error:', message);
+    } else {
+      debugLog('WebSocket message received:', message.type);
+    }
     
     switch (message.type) {
       case 'recording-started':
+        // Ignore duplicate recording-started messages for the same session
+        if (sessionIdRef.current === message.sessionId) {
+          debugLog('Ignoring duplicate recording-started for session:', message.sessionId);
+          return;
+        }
         sessionIdRef.current = message.sessionId;
-        console.log('[WebSocket] Recording started with sessionId:', message.sessionId);
+        debugLog('Recording started with sessionId:', message.sessionId);
         onRecordingStart?.();
         break;
       
       case 'recording-stopped':
-        console.log('[WebSocket] Recording stopped successfully:', {
+        debugLog('Recording stopped successfully:', {
           recordingId: message.recordingId,
           duration: message.duration,
           s3Key: message.s3Key
         });
         // Clear the session ID after successful stop
         sessionIdRef.current = null;
+        // Reset recording state after server confirms stop
+        setIsRecording(false);
+        setIsPaused(false);
+        setDuration(0);
         onRecordingStop?.(message.recordingId);
         break;
       
       case 'chunk-received':
-        console.log('[WebSocket] Chunk acknowledged:', message.sequenceNumber);
+        // Don't log every chunk acknowledgment to reduce console noise
         break;
       
       case 'error':
@@ -79,7 +100,7 @@ export const useAudioRecording = ({
         break;
         
       default:
-        console.log('[WebSocket] Unknown message type:', message.type);
+        debugLog('Unknown message type:', message.type);
     }
   }, [lastMessage, onRecordingStart, onRecordingStop]);
 
@@ -122,6 +143,13 @@ export const useAudioRecording = ({
   }, [isRecording]);
 
   const startRecording = useCallback(async () => {
+    // Prevent multiple simultaneous recording starts
+    if (isRecording || sessionIdRef.current) {
+      debugLog('Recording already in progress, ignoring start request');
+      toast.warning('Recording already in progress');
+      return;
+    }
+
     if (!isConnected) {
       toast.error('WebSocket not connected');
       return;
@@ -162,13 +190,15 @@ export const useAudioRecording = ({
 
       // Handle data available
       mediaRecorder.ondataavailable = async (event) => {
-        console.log('[Audio] Data available:', event.data.size, 'bytes');
         if (event.data.size > 0 && sessionIdRef.current) {
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64 = reader.result?.toString().split(',')[1];
             if (base64 && sessionIdRef.current) {
-              console.log('[Audio] Sending chunk', sequenceNumberRef.current, 'for session:', sessionIdRef.current);
+              // Only log every 10th chunk in development
+              if (sequenceNumberRef.current % 10 === 0) {
+                debugLog('Sending chunk', sequenceNumberRef.current, 'size:', event.data.size, 'bytes');
+              }
               sendMessage({
                 action: 'audio-stream',
                 type: 'audio-chunk',
@@ -184,7 +214,7 @@ export const useAudioRecording = ({
 
       // Handle recording stop event
       mediaRecorder.onstop = () => {
-        console.log('[Audio] MediaRecorder stopped event fired');
+        debugLog('MediaRecorder stopped event fired');
       };
 
       // Send start recording message
@@ -199,9 +229,11 @@ export const useAudioRecording = ({
         },
       });
 
-      // Start recording with 1-second chunks
-      mediaRecorder.start(1000);
+      // Set recording state immediately to prevent duplicate starts
       setIsRecording(true);
+
+      // Start recording with 5-second chunks to reduce frequency and console noise
+      mediaRecorder.start(5000);
       startTimeRef.current = Date.now();
 
       // Start duration timer
@@ -221,6 +253,7 @@ export const useAudioRecording = ({
       }, 30 * 60 * 1000);
 
     } catch (error) {
+      debugLog('Failed to start recording:', error);
       console.error('Failed to start recording:', error);
       const err = error as Error;
       toast.error(err.message || 'Failed to start recording');
@@ -229,47 +262,71 @@ export const useAudioRecording = ({
   }, [encounterId, isConnected, isPaused, isRecording, monitorAudioQuality, onError, sampleRate, sendMessage]);
 
   const stopRecording = useCallback(() => {
-    console.log('[Audio] Stopping recording...');
-    console.log('[Audio] Current sessionId:', sessionIdRef.current);
-    console.log('[Audio] MediaRecorder state:', mediaRecorderRef.current?.state);
+    debugLog('Stopping recording...', {
+      sessionId: sessionIdRef.current,
+      mediaRecorderState: mediaRecorderRef.current?.state
+    });
     
+    // Always clean up local resources
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      console.log('[Audio] Stopping MediaRecorder');
+      debugLog('Stopping MediaRecorder');
       mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
     }
 
     if (streamRef.current) {
-      console.log('[Audio] Stopping media stream tracks');
+      debugLog('Stopping media stream tracks');
       streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
     }
 
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      console.log('[Audio] Closing audio context');
+      debugLog('Closing audio context');
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
 
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = null;
     }
 
-    if (sessionIdRef.current) {
-      console.log('[Audio] Sending stop-recording message for session:', sessionIdRef.current);
+    // Clear the sequence number for next recording
+    sequenceNumberRef.current = 0;
+
+    if (sessionIdRef.current && isConnected) {
+      debugLog('Sending stop-recording message for session:', sessionIdRef.current);
+      const currentSessionId = sessionIdRef.current;
       sendMessage({
         action: 'audio-stream',
         type: 'stop-recording',
-        sessionId: sessionIdRef.current,
+        sessionId: currentSessionId,
       });
+      // Don't reset state here - wait for server confirmation
+      // But set a timeout to force cleanup if no response
+      setTimeout(() => {
+        if (sessionIdRef.current === currentSessionId) {
+          debugLog('No server response after 3 seconds, forcing cleanup');
+          sessionIdRef.current = null;
+          setIsRecording(false);
+          setIsPaused(false);
+          setDuration(0);
+          onRecordingStop?.('timeout');
+        }
+      }, 3000);
     } else {
-      console.warn('[Audio] No sessionId available when stopping recording');
+      debugLog('No sessionId or not connected - cleaning up immediately');
+      // Reset everything immediately
+      sessionIdRef.current = null;
+      setIsRecording(false);
+      setIsPaused(false);
+      setDuration(0);
+      // Call the callback to update parent component
+      if (!sessionIdRef.current) {
+        onRecordingStop?.('no-session');
+      }
     }
-
-    setIsRecording(false);
-    setIsPaused(false);
-    setDuration(0);
-    // Don't clear sessionId immediately - wait for the response
-    // sessionIdRef.current = null;
-  }, [sendMessage]);
+  }, [sendMessage, isConnected, onRecordingStop]);
 
   const pauseRecording = useCallback(() => {
     if (!isRecording || !sessionIdRef.current) return;
@@ -301,7 +358,7 @@ export const useAudioRecording = ({
     });
   }, [isRecording, sendMessage]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount or WebSocket disconnect
   useEffect(() => {
     return () => {
       if (isRecording) {
@@ -309,6 +366,14 @@ export const useAudioRecording = ({
       }
     };
   }, [isRecording, stopRecording]);
+
+  // Handle WebSocket disconnection during recording
+  useEffect(() => {
+    if (!isConnected && isRecording && sessionIdRef.current) {
+      // stopRecording will handle cleanup properly when disconnected
+      stopRecording();
+    }
+  }, [isConnected, isRecording, stopRecording]);
 
   return {
     isRecording,
