@@ -95,8 +95,23 @@ export const useAudioRecording = ({
       
       case 'error':
         console.error('[WebSocket] Recording error:', message.message);
-        toast.error(message.message || 'Recording error occurred');
-        stopRecording();
+        
+        // If it's a "session not found" or "no audio data" error, just clean up locally
+        if (message.message?.includes('Session not found') || 
+            message.message?.includes('No audio data')) {
+          debugLog('Session already gone, cleaning up locally');
+          sessionIdRef.current = null;
+          setIsRecording(false);
+          setIsPaused(false);
+          setDuration(0);
+          // Don't show error to user for these expected cases
+          if (!message.message?.includes('Session not found')) {
+            toast.warning('Recording ended - no audio was captured');
+          }
+        } else {
+          toast.error(message.message || 'Recording error occurred');
+          stopRecording();
+        }
         break;
         
       default:
@@ -304,7 +319,7 @@ export const useAudioRecording = ({
       });
       // Don't reset state here - wait for server confirmation
       // But set a timeout to force cleanup if no response
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (sessionIdRef.current === currentSessionId) {
           debugLog('No server response after 3 seconds, forcing cleanup');
           sessionIdRef.current = null;
@@ -314,6 +329,9 @@ export const useAudioRecording = ({
           onRecordingStop?.('timeout');
         }
       }, 3000);
+      
+      // Clear the session ID to prevent duplicate stop messages
+      sessionIdRef.current = null;
     } else {
       debugLog('No sessionId or not connected - cleaning up immediately');
       // Reset everything immediately

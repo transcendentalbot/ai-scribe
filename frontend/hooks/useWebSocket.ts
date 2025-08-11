@@ -102,6 +102,14 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   }, []);
 
   const sendMessage = useCallback((data: any) => {
+    // Don't send stop messages without a session ID
+    if (data.type === 'stop-recording' && !data.sessionId) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Attempted to send stop-recording without sessionId');
+      }
+      return;
+    }
+    
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       // Only log non-chunk messages or every 10th chunk in development
       if (process.env.NODE_ENV === 'development' && (data.type !== 'audio-chunk' || data.sequenceNumber % 10 === 0)) {
