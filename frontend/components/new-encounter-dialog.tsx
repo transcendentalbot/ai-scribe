@@ -232,6 +232,24 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
               <>
                 {/* New Patient Form */}
                 <div className="space-y-4">
+                  <div className="mb-3 p-2 bg-green-50 rounded-md flex items-center justify-between">
+                    <div className="text-sm text-green-700">
+                      <p className="font-medium">Quick Fill Test Patient</p>
+                      <p className="text-xs">John Doe • MRN: TEST123 • DOB: 1990-01-01</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setNewPatientName('John Doe');
+                        setNewPatientMRN('TEST' + Math.floor(Math.random() * 10000));
+                        setNewPatientBirthdate('1990-01-01');
+                      }}
+                    >
+                      Auto Fill
+                    </Button>
+                  </div>
                   <div>
                     <Label htmlFor="patientName">Patient Name</Label>
                     <Input

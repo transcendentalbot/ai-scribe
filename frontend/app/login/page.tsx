@@ -11,8 +11,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
 function LoginForm() {
-  const [email, setEmail] = useState('test@example.com');
-  const [password, setPassword] = useState('TestPassword123!');
+  const [email, setEmail] = useState('testuser@healthspaceai.com');
+  const [password, setPassword] = useState('TestUser123!');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
@@ -56,6 +56,43 @@ function LoginForm() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="mb-4 space-y-2">
+              <div className="p-3 bg-blue-50 rounded-md">
+                <p className="text-sm text-blue-700 mb-2">Test Account 1:</p>
+                <p className="text-xs font-mono">Email: test@example.com</p>
+                <p className="text-xs font-mono">Password: TestPassword123!</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => {
+                    setEmail('test@example.com');
+                    setPassword('TestPassword123!');
+                  }}
+                >
+                  Use Test Account 1
+                </Button>
+              </div>
+              <div className="p-3 bg-green-50 rounded-md">
+                <p className="text-sm text-green-700 mb-2">Test Account 2:</p>
+                <p className="text-xs font-mono">Email: testuser@healthspaceai.com</p>
+                <p className="text-xs font-mono">Password: TestUser123!</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => {
+                    setEmail('testuser@healthspaceai.com');
+                    setPassword('TestUser123!');
+                  }}
+                >
+                  Use Test Account 2
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

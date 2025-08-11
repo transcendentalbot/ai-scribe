@@ -316,39 +316,76 @@ export class AiScribeStack extends cdk.Stack {
       routeSelectionExpression: '$request.body.action',
     });
 
-    // WebSocket placeholder handler
-    const websocketHandler = new lambda.Function(this, 'WebSocketHandler', {
-      functionName: `ai-scribe-${stage}-websocket`,
+    // WebSocket Lambda handlers
+    const connectHandler = new lambda.Function(this, 'WebSocketConnectHandler', {
+      functionName: `ai-scribe-${stage}-ws-connect`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromInline(`
-        exports.handler = async (event) => {
-          console.log('WebSocket event:', JSON.stringify(event, null, 2));
-          return { statusCode: 200, body: 'Connected' };
-        };
-      `),
+      handler: 'dist/handlers/websocket/connect.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
       environment: {
-        CONNECTIONS_TABLE: connectionsTable.tableName,
+        CONNECTIONS_TABLE_NAME: connectionsTable.tableName,
       },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
     });
+
+    const disconnectHandler = new lambda.Function(this, 'WebSocketDisconnectHandler', {
+      functionName: `ai-scribe-${stage}-ws-disconnect`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'dist/handlers/websocket/disconnect.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      environment: {
+        CONNECTIONS_TABLE_NAME: connectionsTable.tableName,
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+    });
+
+    const audioStreamHandler = new lambda.Function(this, 'WebSocketAudioStreamHandler', {
+      functionName: `ai-scribe-${stage}-ws-audio-stream`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'dist/handlers/websocket/audio-stream.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      environment: {
+        CONNECTIONS_TABLE_NAME: connectionsTable.tableName,
+        TABLE_NAME: this.mainTable.tableName,
+        AUDIO_BUCKET_NAME: this.audioBucket.bucketName,
+      },
+      memorySize: 512,
+      timeout: cdk.Duration.seconds(30),
+    });
+
+    // Grant permissions
+    connectionsTable.grantReadWriteData(connectHandler);
+    connectionsTable.grantReadWriteData(disconnectHandler);
+    connectionsTable.grantReadWriteData(audioStreamHandler);
+    this.mainTable.grantReadWriteData(audioStreamHandler);
+    this.audioBucket.grantReadWrite(audioStreamHandler);
+
+    // Grant Lambda permission to post to connections
+    const executeApiArn = `arn:aws:execute-api:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:${this.websocketApi.apiId}/${stage}/POST/@connections/*`;
+    audioStreamHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [executeApiArn],
+    }));
 
     // WebSocket routes
     new apigatewayv2.WebSocketRoute(this, 'ConnectRoute', {
       webSocketApi: this.websocketApi,
       routeKey: '$connect',
-      integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('ConnectIntegration', websocketHandler),
+      integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('ConnectIntegration', connectHandler),
     });
 
     new apigatewayv2.WebSocketRoute(this, 'DisconnectRoute', {
       webSocketApi: this.websocketApi,
       routeKey: '$disconnect',
-      integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('DisconnectIntegration', websocketHandler),
+      integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('DisconnectIntegration', disconnectHandler),
     });
 
-    new apigatewayv2.WebSocketRoute(this, 'DefaultRoute', {
+    new apigatewayv2.WebSocketRoute(this, 'AudioStreamRoute', {
       webSocketApi: this.websocketApi,
-      routeKey: '$default',
-      integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('DefaultIntegration', websocketHandler),
+      routeKey: 'audio-stream',
+      integration: new apigatewayv2Integrations.WebSocketLambdaIntegration('AudioStreamIntegration', audioStreamHandler),
     });
 
     const webSocketStage = new apigatewayv2.WebSocketStage(this, 'WebSocketStage', {

@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Mic, Pause, Play, Square, Volume2, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Mic, Pause, Play, Square, Volume2, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAudioRecording } from '@/hooks/useAudioRecording';
+import { toast } from 'sonner';
 
 interface RecordingInterfaceProps {
   encounterId: string;
@@ -13,66 +15,47 @@ interface RecordingInterfaceProps {
 }
 
 export function RecordingInterface({ 
-  isRecording, 
+  encounterId,
+  isRecording: externalIsRecording, 
   onToggleRecording 
 }: RecordingInterfaceProps) {
-  const [duration, setDuration] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
 
+  const {
+    isRecording,
+    isPaused,
+    duration,
+    audioQuality,
+    isConnected,
+    startRecording,
+    stopRecording,
+    pauseRecording,
+    resumeRecording,
+  } = useAudioRecording({
+    encounterId,
+    onRecordingStart: () => {
+      console.log('Recording started');
+    },
+    onRecordingStop: (recordingId) => {
+      console.log('Recording stopped:', recordingId);
+      toast.success('Recording saved successfully');
+      setIsProcessing(false);
+      onToggleRecording();
+    },
+    onError: (error) => {
+      toast.error(`Recording error: ${error.message}`);
+      setIsProcessing(false);
+    },
+  });
+
+  // Sync external recording state with internal state
   useEffect(() => {
-    if (isRecording && !isPaused) {
-      intervalRef.current = setInterval(() => {
-        setDuration(prev => prev + 1);
-      }, 1000);
-
-      // Set up audio level monitoring
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-          audioContextRef.current = new AudioContext();
-          const source = audioContextRef.current.createMediaStreamSource(stream);
-          analyserRef.current = audioContextRef.current.createAnalyser();
-          analyserRef.current.fftSize = 256;
-          source.connect(analyserRef.current);
-
-          const updateAudioLevel = () => {
-            if (analyserRef.current) {
-              const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-              analyserRef.current.getByteFrequencyData(dataArray);
-              const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-              setAudioLevel(average / 255);
-            }
-            animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
-          };
-          updateAudioLevel();
-        })
-        .catch(err => console.error('Error accessing microphone:', err));
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+    if (externalIsRecording && !isRecording) {
+      startRecording();
+    } else if (!externalIsRecording && isRecording) {
+      handleStop();
     }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-    };
-  }, [isRecording, isPaused]);
+  }, [externalIsRecording]);
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -85,13 +68,17 @@ export function RecordingInterface({
 
   const handleStop = async () => {
     setIsProcessing(true);
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsProcessing(false);
-    onToggleRecording();
-    setDuration(0);
-    setIsPaused(false);
+    stopRecording();
   };
+
+  const getAudioQualityStatus = () => {
+    if (audioQuality.isClipping) return { text: 'Clipping', color: 'text-red-600' };
+    if (audioQuality.volume < 10) return { text: 'Too Quiet', color: 'text-yellow-600' };
+    if (audioQuality.noiseLevel > 50) return { text: 'Noisy', color: 'text-yellow-600' };
+    return { text: 'Excellent', color: 'text-green-600' };
+  };
+
+  const audioQualityStatus = getAudioQualityStatus();
 
   return (
     <Card className="overflow-hidden">
@@ -125,7 +112,7 @@ export function RecordingInterface({
                   key={i}
                   className="w-2 bg-gradient-to-t from-blue-500 to-indigo-500 rounded-full"
                   animate={{
-                    height: isRecording ? `${Math.max(8, audioLevel * 64 * (1 + Math.sin(Date.now() / 100 + i) * 0.3))}px` : '8px'
+                    height: isRecording ? `${Math.max(8, audioQuality.volume * 0.64 * (1 + Math.sin(Date.now() / 100 + i) * 0.3))}px` : '8px'
                   }}
                   transition={{ duration: 0.1 }}
                 />
@@ -158,7 +145,7 @@ export function RecordingInterface({
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => setIsPaused(!isPaused)}
+                onClick={() => isPaused ? resumeRecording() : pauseRecording()}
                 disabled={isProcessing}
               >
                 {isPaused ? (
@@ -224,15 +211,29 @@ export function RecordingInterface({
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <p className="text-sm text-gray-600">Audio Quality</p>
-                <p className="font-semibold text-green-600">Excellent</p>
+                <p className={`font-semibold ${audioQualityStatus.color}`}>
+                  {audioQualityStatus.text}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Network Status</p>
-                <p className="font-semibold text-green-600">Connected</p>
+                <p className={`font-semibold flex items-center justify-center gap-1 ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+                  {isConnected ? (
+                    <>
+                      <Wifi className="h-4 w-4" />
+                      Connected
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-4 w-4" />
+                      Disconnected
+                    </>
+                  )}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Storage</p>
-                <p className="font-semibold text-gray-900">Cloud</p>
+                <p className="font-semibold text-gray-900">Cloud (S3)</p>
               </div>
             </div>
           </div>

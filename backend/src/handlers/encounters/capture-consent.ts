@@ -5,11 +5,11 @@ import { z } from 'zod';
 import { CaptureConsentSchema } from '../../types/encounter';
 import { EncounterService } from '../../services/encounter.service';
 import { errorHandler } from '../../middleware/error-handler';
-import { validateBody, validatePathParams, getAuthToken } from '../../middleware/request-validator';
+import { validateBody, validatePathParams } from '../../middleware/request-validator';
 import { response } from '../../utils/response';
 import { logger } from '../../utils/logger';
 import { metrics } from '../../utils/metrics';
-import { cognitoService } from '../../utils/cognito';
+import { getProviderIdFromToken } from '../../utils/jwt';
 import { AuthorizationError, NotFoundError } from '../../errors';
 
 const dynamoClient = new DynamoDBClient({});
@@ -24,13 +24,7 @@ const captureConsentHandler = async (event: APIGatewayProxyEvent, context: Conte
   const startTime = Date.now();
   
   // Get provider ID from token
-  const token = getAuthToken(event);
-  const user = await cognitoService.getUser(token);
-  const providerId = user.UserAttributes?.find(attr => attr.Name === 'custom:user_id')?.Value;
-  
-  if (!providerId) {
-    throw new AuthorizationError('Provider ID not found');
-  }
+  const providerId = getProviderIdFromToken(event);
 
   // Validate path parameters
   const { encounterId } = validatePathParams(event, PathParamsSchema);
