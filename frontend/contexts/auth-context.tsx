@@ -174,13 +174,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('idToken');
-    localStorage.removeItem('user');
-    setUser(null);
-    router.push('/login');
+  const logout = async () => {
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      if (accessToken) {
+        // Call backend logout endpoint to invalidate tokens
+        await axios.post(`${API_BASE_URL}/auth/logout`, {}, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }).catch(() => {
+          // Even if the backend call fails, proceed with local logout
+          debugLog('AUTH', 'Backend logout failed, proceeding with local logout');
+        });
+      }
+    } catch (error) {
+      debugLog('AUTH', 'Logout error', error);
+    } finally {
+      // Always clear local storage and redirect
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('idToken');
+      localStorage.removeItem('user');
+      setUser(null);
+      router.push('/login');
+    }
   };
 
   return (

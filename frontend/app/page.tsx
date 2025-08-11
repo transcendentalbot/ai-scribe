@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Calendar, Clock, Users, Activity, Plus } from 'lucide-react';
+import { Calendar, Clock, Users, Activity, Plus, LogOut, User } from 'lucide-react';
 import { encounterApi } from '@/lib/api';
 import { EncounterCard } from '@/components/encounter-card';
 import { PatientSearch } from '@/components/patient-search';
@@ -12,6 +12,7 @@ import { NewEncounterDialog } from '@/components/new-encounter-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ProtectedRoute } from '@/components/protected-route';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function DashboardPage() {
   return (
@@ -24,6 +25,7 @@ export default function DashboardPage() {
 function DashboardContent() {
   const [selectedDate] = useState(new Date());
   const [showNewEncounter, setShowNewEncounter] = useState(false);
+  const { user, logout } = useAuth();
   
   const { data, isLoading, error } = useQuery({
     queryKey: ['encounters', 'daily', format(selectedDate, 'yyyy-MM-dd')],
@@ -53,6 +55,16 @@ function DashboardContent() {
                 <Plus className="w-4 h-4 mr-2" />
                 New Encounter
               </Button>
+              <div className="flex items-center gap-2 ml-4 pl-4 border-l">
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-gray-600" />
+                  <span className="text-sm text-gray-700">{user?.email}</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
             </div>
           </div>
         </div>

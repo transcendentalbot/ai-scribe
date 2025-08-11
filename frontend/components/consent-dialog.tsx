@@ -86,9 +86,9 @@ export function ConsentDialog({ isOpen, onClose, onSubmit, patientName }: Consen
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-x-0 top-1/2 -translate-y-1/2 max-w-2xl mx-auto z-50 px-4"
+            className="fixed inset-x-0 top-20 max-w-2xl mx-auto z-50 px-4"
           >
-            <Card className="p-6">
+            <Card className="p-6 max-h-[80vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Capture Consent</h2>

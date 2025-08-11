@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { 
   ArrowLeft, Clock, User, MapPin, FileText, 
   Play, CheckCircle2, 
-  AlertCircle, XCircle
+  AlertCircle, XCircle, LogOut
 } from 'lucide-react';
 import { encounterApi } from '@/lib/api';
 import { EncounterStatus, ConsentType } from '@/types';
@@ -18,6 +18,7 @@ import { ConsentDialog } from '@/components/consent-dialog';
 import { RecordingInterface } from '@/components/recording-interface';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/auth-context';
 
 const statusConfig = {
   [EncounterStatus.SCHEDULED]: {
@@ -68,6 +69,7 @@ export default function EncounterDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user, logout } = useAuth();
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -149,14 +151,26 @@ export default function EncounterDetailPage() {
                 </p>
               </div>
             </div>
-            {currentStatus.nextAction && (
-              <Button
-                onClick={handleStatusChange}
-                disabled={updateStatusMutation.isPending}
-              >
-                {currentStatus.nextAction}
-              </Button>
-            )}
+            <div className="flex items-center gap-4">
+              {currentStatus.nextAction && (
+                <Button
+                  onClick={handleStatusChange}
+                  disabled={updateStatusMutation.isPending}
+                >
+                  {currentStatus.nextAction}
+                </Button>
+              )}
+              <div className="flex items-center gap-2 ml-4 pl-4 border-l">
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-gray-600" />
+                  <span className="text-sm text-gray-700">{user?.email}</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
