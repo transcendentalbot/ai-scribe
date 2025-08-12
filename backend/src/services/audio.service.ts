@@ -202,8 +202,8 @@ class AudioService {
       new UpdateCommand({
         TableName: this.tableName,
         Key: {
-          PK: `ENCOUNTER#${session.encounterId}`,
-          SK: `ENCOUNTER#${session.encounterId}`,
+          pk: `ENCOUNTER#${session.encounterId}`,
+          sk: 'METADATA',
         },
         UpdateExpression: 'SET recordings = list_append(if_not_exists(recordings, :empty), :recording)',
         ExpressionAttributeValues: {

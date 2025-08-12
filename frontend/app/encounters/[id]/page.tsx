@@ -233,13 +233,6 @@ export default function EncounterDetailPage() {
             )}
             
             {/* Original Recording Interface - Hidden for now */}
-            {false && encounter.status === EncounterStatus.IN_PROGRESS && hasRecordingConsent && (
-              <RecordingInterface
-                encounterId={encounter.id}
-                isRecording={isRecording}
-                onToggleRecording={() => setIsRecording(!isRecording)}
-              />
-            )}
 
             {/* Chief Complaint */}
             {encounter.chiefComplaint && (
