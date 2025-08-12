@@ -288,6 +288,7 @@ export class AiScribeStack extends cdk.Stack {
       userPool: this.userPool,
       mainTable: this.mainTable,
       environment: stage,
+      audioBucket: this.audioBucket,
     });
     
     // Attach the authorizer to the API

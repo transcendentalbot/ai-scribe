@@ -97,15 +97,42 @@ export const patientApi = {
 
 export const recordingApi = {
   uploadAudio: async (encounterId: string, audioBlob: Blob, filename: string) => {
-    const formData = new FormData();
-    formData.append('audio', audioBlob, filename);
-    formData.append('encounterId', encounterId);
-    
-    return api.post('/recordings/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    try {
+      // Step 1: Get presigned URL
+      const { data } = await api.post('/recordings/upload', {
+        encounterId,
+        filename,
+      });
+      
+      if (!data.presignedUrl) {
+        throw new Error('No presigned URL received');
+      }
+      
+      // Step 2: Upload directly to S3
+      const uploadResponse = await fetch(data.presignedUrl, {
+        method: 'PUT',
+        body: audioBlob,
+        headers: {
+          'Content-Type': 'audio/webm',
+        },
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('S3 upload failed');
+      }
+      
+      return {
+        data: {
+          success: true,
+          s3Key: data.s3Key,
+          recordingId: data.recordingId,
+          s3Url: data.presignedUrl.split('?')[0], // Remove query params for clean URL
+        }
+      };
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
   },
   
   getRecording: async (encounterId: string) => {

@@ -17,6 +17,8 @@ import { Badge } from '@/components/ui/badge';
 import { ConsentDialog } from '@/components/consent-dialog';
 import { RecordingInterface } from '@/components/recording-interface';
 import { SimpleRecordingInterface } from '@/components/simple-recording-interface';
+import { WebSocketTestRecording } from '@/components/websocket-test-recording';
+import { WebSocketDebugRecording } from '@/components/websocket-debug-recording';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
@@ -229,7 +231,10 @@ export default function EncounterDetailPage() {
 
             {/* Recording Interface - Using Simple Recording for now */}
             {encounter.status === EncounterStatus.IN_PROGRESS && hasRecordingConsent && (
-              <SimpleRecordingInterface encounterId={encounter.id} />
+              <>
+                <SimpleRecordingInterface encounterId={encounter.id} />
+                <WebSocketDebugRecording encounterId={encounter.id} />
+              </>
             )}
             
             {/* Original Recording Interface - Hidden for now */}

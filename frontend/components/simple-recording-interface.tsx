@@ -21,6 +21,7 @@ export function SimpleRecordingInterface({ encounterId }: SimpleRecordingInterfa
     startRecording,
     stopRecording,
     clearRecording,
+    isUploading,
   } = useSimpleAudioRecording({
     encounterId,
     onRecordingComplete: (url) => {
@@ -63,8 +64,12 @@ export function SimpleRecordingInterface({ encounterId }: SimpleRecordingInterfa
             Simple Audio Recording
           </CardTitle>
           {audioUrl && !isRecording && (
-            <span className="text-sm text-green-600 font-medium">
-              Recording saved locally
+            <span className="text-sm font-medium">
+              {isUploading ? (
+                <span className="text-blue-600">Uploading to cloud...</span>
+              ) : (
+                <span className="text-green-600">Recording saved</span>
+              )}
             </span>
           )}
         </div>

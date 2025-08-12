@@ -1,13 +1,12 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
+import { recordingApi } from '@/lib/api';
 
 interface UseSimpleAudioRecordingOptions {
   encounterId: string;
   onRecordingComplete?: (audioUrl: string) => void;
   onError?: (error: Error) => void;
 }
-
-const STORAGE_KEY_PREFIX = 'ai-scribe-recording-';
 
 export const useSimpleAudioRecording = ({
   encounterId,
@@ -17,64 +16,33 @@ export const useSimpleAudioRecording = ({
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
-  // Load saved recording from localStorage on mount
-  useEffect(() => {
-    const storageKey = `${STORAGE_KEY_PREFIX}${encounterId}`;
-    const savedData = localStorage.getItem(storageKey);
-    
-    if (savedData) {
-      try {
-        const { audioData, mimeType, duration: savedDuration } = JSON.parse(savedData);
-        // Convert base64 back to blob
-        const byteCharacters = atob(audioData);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: mimeType });
-        
-        const url = URL.createObjectURL(blob);
-        setAudioUrl(url);
-        setDuration(savedDuration || 0);
-        toast.info('Previous recording loaded');
-      } catch (error) {
-        console.error('Failed to load saved recording:', error);
+  const uploadToS3 = useCallback(async (audioBlob: Blob, mimeType: string) => {
+    setIsUploading(true);
+    try {
+      const filename = `recording-${encounterId}-${Date.now()}.${mimeType.split('/')[1]}`;
+      const response = await recordingApi.uploadAudio(encounterId, audioBlob, filename);
+      
+      if (response.data.success) {
+        toast.success('Recording uploaded to cloud');
+        return response.data.s3Url;
+      } else {
+        throw new Error('Upload failed');
       }
+    } catch (error) {
+      console.error('Failed to upload to S3:', error);
+      toast.error('Failed to upload recording to cloud');
+      throw error;
+    } finally {
+      setIsUploading(false);
     }
   }, [encounterId]);
-
-  const saveToLocalStorage = useCallback(async (blob: Blob, mimeType: string) => {
-    try {
-      // Convert blob to base64 for localStorage
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64data = reader.result?.toString().split(',')[1];
-        if (base64data) {
-          const storageKey = `${STORAGE_KEY_PREFIX}${encounterId}`;
-          const dataToSave = {
-            audioData: base64data,
-            mimeType,
-            duration,
-            timestamp: new Date().toISOString(),
-            encounterId,
-          };
-          localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-          toast.success('Recording saved locally');
-        }
-      };
-      reader.readAsDataURL(blob);
-    } catch (error) {
-      console.error('Failed to save to localStorage:', error);
-      toast.error('Failed to save recording locally');
-    }
-  }, [encounterId, duration]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -122,19 +90,13 @@ export const useSimpleAudioRecording = ({
         const url = URL.createObjectURL(audioBlob);
         setAudioUrl(url);
         
-        // Save to localStorage
-        await saveToLocalStorage(audioBlob, mimeType);
-        
-        // Upload to S3 (you'll need to implement this endpoint)
+        // Upload to S3
         try {
-          const formData = new FormData();
-          formData.append('audio', audioBlob, `recording-${Date.now()}.${mimeType.split('/')[1]}`);
-          formData.append('encounterId', encounterId);
-          
-          // For now, just save locally
-          onRecordingComplete?.(url);
+          const s3Url = await uploadToS3(audioBlob, mimeType);
+          onRecordingComplete?.(s3Url || url);
         } catch (error) {
-          console.error('Failed to upload recording:', error);
+          // Keep local URL even if upload fails
+          onRecordingComplete?.(url);
           onError?.(error as Error);
         }
       };
@@ -169,12 +131,13 @@ export const useSimpleAudioRecording = ({
   }, []);
 
   const clearRecording = useCallback(() => {
-    const storageKey = `${STORAGE_KEY_PREFIX}${encounterId}`;
-    localStorage.removeItem(storageKey);
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
     setAudioUrl(null);
     setDuration(0);
     toast.info('Recording cleared');
-  }, [encounterId]);
+  }, [audioUrl]);
 
   return {
     isRecording,
@@ -183,5 +146,6 @@ export const useSimpleAudioRecording = ({
     startRecording,
     stopRecording,
     clearRecording,
+    isUploading,
   };
 };

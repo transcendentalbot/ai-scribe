@@ -79,7 +79,7 @@ export function WebSocketDebugRecording({ encounterId }: WebSocketDebugRecording
     } catch (error) {
       log(`Failed to parse message: ${error}`);
     }
-  }, [lastMessage]);
+  }, [lastMessage, sendMessage]);
 
   const startRecording = async () => {
     log('Starting recording...');

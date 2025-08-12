@@ -33,16 +33,66 @@
 - 24-hour lifecycle policy
 - Server-side encryption
 - Pre-signed URLs for upload
+- Multipart upload for large files
+
+## Implementation Status (Updated: 2025-08-12)
+
+### Completed
+1. ✅ **WebSocket Infrastructure**
+   - WebSocket API Gateway configured
+   - Connect/disconnect handlers implemented
+   - Audio stream route established
+
+2. ✅ **Session Management**
+   - Fixed DynamoDB session storage (using connectionId as key)
+   - Sessions properly stored and retrieved
+   - Session lifecycle management working
+
+3. ✅ **Frontend Recording**
+   - WebSocket recording hook implemented
+   - Debug recording component for testing
+   - Simple recording with S3 upload as fallback
+   - Audio chunks sent successfully to backend
+
+4. ✅ **Backend Processing**
+   - Audio chunks received and acknowledged
+   - S3 multipart upload initialized
+   - Session tracking across Lambda instances
+
+### Current Issues
+1. ✅ **S3 Multipart Upload Requirements** (FIXED)
+   - ~~Error: `EntityTooSmall: Your proposed upload is smaller than the minimum allowed size`~~
+   - ~~S3 requires minimum 5MB per part (except last part)~~
+   - ~~Current chunks are only ~8KB each~~
+   - ✅ Implemented chunk buffering until 5MB threshold
+   - ✅ Added in-memory buffer storage for Lambda instances
+   - ✅ Final part can be < 5MB on stop recording
+
+### Next Steps
+1. **Test Recording Flow**
+   - Test end-to-end recording with new buffering logic
+   - Verify recordings are properly saved to S3
+   - Test with recordings of various lengths
+
+2. **Complete Recording Flow**
+   - Test end-to-end recording with buffering
+   - Verify recordings saved to encounter
+   - Implement recording playback
+
+3. **Add Missing Features**
+   - Audio quality monitoring
+   - Visual indicators
+   - Pause/resume functionality
+   - Auto-stop at 30 minutes
 
 **Cursor Prompt**:
 ```
-Implement audio recording system:
-1. React component with record button and consent checkbox
-2. Web Audio API setup with quality monitoring
-3. WebSocket client for streaming audio chunks
-4. Lambda WebSocket handler for audio reception
-5. S3 upload with pre-signed URLs
-6. Real-time quality indicators and warnings
+Fix S3 multipart upload in audio service:
+1. Buffer audio chunks until reaching 5MB threshold
+2. Upload buffered chunks as S3 multipart parts
+3. Handle last part (can be < 5MB)
+4. Update session in DynamoDB after each part upload
+5. Complete multipart upload on stop recording
 
-Include comprehensive error handling and user notifications.
+Key constraint: S3 multipart requires minimum 5MB per part except the last one.
 ```
