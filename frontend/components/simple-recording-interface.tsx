@@ -1,6 +1,6 @@
 'use client';
 
-import { Mic, Square, Download, Play, Pause } from 'lucide-react';
+import { Mic, Square, Download, Play, Pause, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSimpleAudioRecording } from '@/hooks/useSimpleAudioRecording';
@@ -20,6 +20,7 @@ export function SimpleRecordingInterface({ encounterId }: SimpleRecordingInterfa
     audioUrl,
     startRecording,
     stopRecording,
+    clearRecording,
   } = useSimpleAudioRecording({
     encounterId,
     onRecordingComplete: (url) => {
@@ -56,10 +57,17 @@ export function SimpleRecordingInterface({ encounterId }: SimpleRecordingInterfa
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Mic className="h-5 w-5" />
-          Simple Audio Recording
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Mic className="h-5 w-5" />
+            Simple Audio Recording
+          </CardTitle>
+          {audioUrl && !isRecording && (
+            <span className="text-sm text-green-600 font-medium">
+              Recording saved locally
+            </span>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="text-center space-y-4">
@@ -122,6 +130,15 @@ export function SimpleRecordingInterface({ encounterId }: SimpleRecordingInterfa
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Download
+                </Button>
+                
+                <Button 
+                  onClick={clearRecording}
+                  variant="outline"
+                  size="lg"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear
                 </Button>
                 
                 <Button 

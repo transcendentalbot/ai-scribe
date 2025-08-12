@@ -95,6 +95,24 @@ export const patientApi = {
   },
 };
 
+export const recordingApi = {
+  uploadAudio: async (encounterId: string, audioBlob: Blob, filename: string) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, filename);
+    formData.append('encounterId', encounterId);
+    
+    return api.post('/recordings/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  
+  getRecording: async (encounterId: string) => {
+    return api.get(`/recordings/${encounterId}`);
+  },
+};
+
 export const encounterApi = {
   getDailyList: async (date?: string, providerId?: string) => {
     const params = new URLSearchParams();
