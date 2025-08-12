@@ -148,7 +148,7 @@ export const recordingApi = {
         transcriptionId?: string;
       }>;
     }>(`/encounters/${encounterId}/recordings`);
-    return response.data;
+    return response.data.data;
   },
 };
 

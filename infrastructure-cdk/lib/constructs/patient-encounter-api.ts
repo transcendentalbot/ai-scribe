@@ -148,7 +148,7 @@ export class PatientEncounterApi extends Construct {
     if (audioBucket) {
       const recordingHandlers = [
         { name: 'upload', path: 'recordings/upload', method: 'POST' },
-        { name: 'get-recordings', path: 'encounters/{id}/recordings', method: 'GET' },
+        { name: 'get-recordings', path: 'encounters/{encounterId}/recordings', method: 'GET' },
       ];
 
       recordingHandlers.forEach(handler => {

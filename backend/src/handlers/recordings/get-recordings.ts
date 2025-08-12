@@ -17,7 +17,7 @@ export const handler = async (
     // Verify authorization
     const user = getUserFromToken(event);
 
-    const encounterId = event.pathParameters?.id;
+    const encounterId = event.pathParameters?.encounterId;
     if (!encounterId) {
       return response.error('Encounter ID is required', 400);
     }
