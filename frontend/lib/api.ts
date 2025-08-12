@@ -137,16 +137,19 @@ export const recordingApi = {
   
   getRecordings: async (encounterId: string) => {
     const response = await api.get<{
-      encounterId: string;
-      recordings: Array<{
-        id: string;
-        startTime: string;
-        endTime: string;
-        duration: number;
-        s3Key: string;
-        url: string;
-        transcriptionId?: string;
-      }>;
+      success: boolean;
+      data: {
+        encounterId: string;
+        recordings: Array<{
+          id: string;
+          startTime: string;
+          endTime: string;
+          duration: number;
+          s3Key: string;
+          url: string;
+          transcriptionId?: string;
+        }>;
+      };
     }>(`/encounters/${encounterId}/recordings`);
     return response.data.data;
   },
