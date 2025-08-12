@@ -83,24 +83,45 @@ export const handler = async (
       case 'audio-chunk': {
         const { sessionId, chunk, sequenceNumber } = body;
         
-        // Process audio chunk
-        await audioService.processAudioChunk({
-          connectionId,
-          sessionId,
-          chunk,
-          sequenceNumber,
-        });
+        try {
+          // Process audio chunk
+          await audioService.processAudioChunk({
+            connectionId,
+            sessionId,
+            chunk,
+            sequenceNumber,
+          });
 
-        // Send acknowledgment
-        await apigwManagementApi.send(
-          new PostToConnectionCommand({
-            ConnectionId: connectionId,
-            Data: JSON.stringify({
-              type: 'chunk-received',
-              sequenceNumber,
-            }),
-          })
-        );
+          // Send acknowledgment
+          await apigwManagementApi.send(
+            new PostToConnectionCommand({
+              ConnectionId: connectionId,
+              Data: JSON.stringify({
+                type: 'chunk-received',
+                sequenceNumber,
+              }),
+            })
+          );
+        } catch (chunkError: any) {
+          // If session not found, it might be a late-arriving chunk after stop
+          if (chunkError.message?.includes('Session not found')) {
+            console.log(`[audio-chunk] Late chunk ignored for completed session: ${sessionId}, seq: ${sequenceNumber}`);
+            // Still send acknowledgment to avoid client retries
+            await apigwManagementApi.send(
+              new PostToConnectionCommand({
+                ConnectionId: connectionId,
+                Data: JSON.stringify({
+                  type: 'chunk-received',
+                  sequenceNumber,
+                  late: true,
+                }),
+              })
+            );
+          } else {
+            // Re-throw other errors
+            throw chunkError;
+          }
+        }
         break;
       }
 

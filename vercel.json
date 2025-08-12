@@ -3,5 +3,11 @@
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/.next",
   "installCommand": "cd frontend && npm install",
-  "devCommand": "cd frontend && npm run dev"
+  "devCommand": "cd frontend && npm run dev",
+  "root": "./",
+  "functions": {
+    "frontend/app/**/*.tsx": {
+      "maxDuration": 30
+    }
+  }
 }

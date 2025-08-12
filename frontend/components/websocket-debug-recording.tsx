@@ -168,17 +168,17 @@ export function WebSocketDebugRecording({ encounterId }: WebSocketDebugRecording
       return;
     }
     
-    // Stop the media recorder
-    mediaRecorderRef.current.stop();
-    mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-    
-    // Send stop message
+    // Send stop message BEFORE stopping MediaRecorder to minimize race condition
     log(`Sending stop-recording for session: ${sessionIdRef.current}`);
     sendMessage({
       action: 'audio-stream',
       type: 'stop-recording',
       sessionId: sessionIdRef.current,
     });
+    
+    // Stop the media recorder after sending stop message
+    mediaRecorderRef.current.stop();
+    mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     
     setIsRecording(false);
     mediaRecorderRef.current = null;

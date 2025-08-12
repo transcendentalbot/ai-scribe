@@ -171,24 +171,27 @@ export function useWebSocketRecording({
 
     console.log('[WebSocket Recording] Stopping recording for session:', sessionIdRef.current);
 
-    // Stop the media recorder
-    mediaRecorderRef.current.stop();
-    mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-    
     // Clear duration timer
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
     }
     
-    // Send stop message
+    // Send stop message BEFORE stopping MediaRecorder
     sendMessage({
       action: 'audio-stream',
       type: 'stop-recording',
       sessionId: sessionIdRef.current,
     });
     
-    mediaRecorderRef.current = null;
+    // Stop the media recorder after sending stop message
+    setTimeout(() => {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current = null;
+      }
+    }, 100); // Small delay to ensure stop message is sent first
   }, [sendMessage]);
 
   const pauseRecording = useCallback(() => {
