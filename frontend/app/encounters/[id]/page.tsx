@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConsentDialog } from '@/components/consent-dialog';
 import { RecordingInterface } from '@/components/recording-interface';
+import { SimpleRecordingInterface } from '@/components/simple-recording-interface';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
@@ -226,8 +227,13 @@ export default function EncounterDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Recording Interface */}
+            {/* Recording Interface - Using Simple Recording for now */}
             {encounter.status === EncounterStatus.IN_PROGRESS && hasRecordingConsent && (
+              <SimpleRecordingInterface encounterId={encounter.id} />
+            )}
+            
+            {/* Original Recording Interface - Hidden for now */}
+            {false && encounter.status === EncounterStatus.IN_PROGRESS && hasRecordingConsent && (
               <RecordingInterface
                 encounterId={encounter.id}
                 isRecording={isRecording}
