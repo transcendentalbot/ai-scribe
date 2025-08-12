@@ -19,6 +19,7 @@ import { RecordingInterface } from '@/components/recording-interface';
 import { SimpleRecordingInterface } from '@/components/simple-recording-interface';
 import { WebSocketTestRecording } from '@/components/websocket-test-recording';
 import { WebSocketDebugRecording } from '@/components/websocket-debug-recording';
+import { RecordingsList } from '@/components/recordings-list';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
@@ -237,7 +238,8 @@ export default function EncounterDetailPage() {
               </>
             )}
             
-            {/* Original Recording Interface - Hidden for now */}
+            {/* Recordings List - Show for all statuses if there are recordings */}
+            <RecordingsList encounterId={encounter.id} />
 
             {/* Chief Complaint */}
             {encounter.chiefComplaint && (

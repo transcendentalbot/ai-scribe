@@ -15,7 +15,7 @@
 ### Deploy Backend
 ```bash
 cd infrastructure-cdk
-./deploy.sh
+./deploy.sh prod us-east-1
 ```
 
 ### What This Deploys

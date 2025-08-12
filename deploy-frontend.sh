@@ -25,7 +25,8 @@ fi
 
 # Deploy to Vercel
 echo "🚀 Deploying to Vercel..."
-vercel --prod
+# Make sure we're in the frontend directory
+vercel --prod --cwd .
 
 echo ""
 echo "✅ Frontend deployment complete!"
