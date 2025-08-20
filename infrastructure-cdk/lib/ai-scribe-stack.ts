@@ -321,8 +321,8 @@ export class AiScribeStack extends cdk.Stack {
     const connectHandler = new lambda.Function(this, 'WebSocketConnectHandler', {
       functionName: `ai-scribe-${stage}-ws-connect`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'dist/handlers/websocket/connect.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      handler: 'handlers/websocket/connect.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist')),
       environment: {
         CONNECTIONS_TABLE_NAME: connectionsTable.tableName,
       },
@@ -333,8 +333,8 @@ export class AiScribeStack extends cdk.Stack {
     const disconnectHandler = new lambda.Function(this, 'WebSocketDisconnectHandler', {
       functionName: `ai-scribe-${stage}-ws-disconnect`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'dist/handlers/websocket/disconnect.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      handler: 'handlers/websocket/disconnect.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist')),
       environment: {
         CONNECTIONS_TABLE_NAME: connectionsTable.tableName,
       },
@@ -345,14 +345,15 @@ export class AiScribeStack extends cdk.Stack {
     const audioStreamHandler = new lambda.Function(this, 'WebSocketAudioStreamHandler', {
       functionName: `ai-scribe-${stage}-ws-audio-stream`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'dist/handlers/websocket/audio-stream.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      handler: 'handlers/websocket/audio-stream.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist')),
       environment: {
         CONNECTIONS_TABLE_NAME: connectionsTable.tableName,
         TABLE_NAME: this.mainTable.tableName,
         AUDIO_BUCKET_NAME: this.audioBucket.bucketName,
+        DEEPGRAM_SECRET_NAME: `${this.stackName}-deepgram`,
       },
-      memorySize: 512,
+      memorySize: 1024, // Increased for transcription processing
       timeout: cdk.Duration.seconds(30),
     });
 
@@ -484,6 +485,9 @@ export class AiScribeStack extends cdk.Stack {
       secretName: `${this.stackName}-deepgram`,
       description: 'Deepgram API key',
     });
+
+    // Grant audioStreamHandler permission to read Deepgram secret
+    deepgramSecret.grantRead(audioStreamHandler);
 
     new ssm.StringParameter(this, 'BedrockModelIdParameter', {
       parameterName: `/${this.stackName}/bedrock-model-id`,

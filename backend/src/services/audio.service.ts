@@ -229,12 +229,20 @@ class AudioService {
       return { status: 'paused' };
     }
 
-    // Validate sequence
-    if (sequenceNumber !== session.lastSequenceNumber + 1) {
-      console.warn('Out of sequence chunk received', {
-        expected: session.lastSequenceNumber + 1,
-        received: sequenceNumber,
-      });
+    // Handle sequence number validation
+    const expectedSequence = session.lastSequenceNumber + 1;
+    
+    if (sequenceNumber < expectedSequence) {
+      // This is a duplicate or late chunk, ignore it
+      console.log(`[AudioService] Ignoring duplicate/late chunk - seq: ${sequenceNumber}, expected: ${expectedSequence}`);
+      return { status: 'duplicate', sequenceNumber };
+    }
+    
+    if (sequenceNumber > expectedSequence) {
+      // This chunk arrived out of order
+      console.warn(`[AudioService] Out of sequence chunk - received: ${sequenceNumber}, expected: ${expectedSequence}`);
+      // For now, we'll accept it but log the gap
+      // In production, you might want to implement a reordering buffer
     }
 
     // Convert base64 to buffer
@@ -404,6 +412,7 @@ class AudioService {
       recordingId,
       duration,
       s3Key: session.s3Key,
+      encounterId: session.encounterId,
     };
   }
 

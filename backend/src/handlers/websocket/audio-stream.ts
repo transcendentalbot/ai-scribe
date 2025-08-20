@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
 import { audioService } from '../../services/audio.service';
+import { transcriptionService } from '../../services/transcription.service';
 
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
@@ -41,26 +42,43 @@ export const handler = async (
     const subAction = body.type || body.action;
     switch (subAction) {
       case 'start-recording': {
-        const { encounterId, metadata } = body;
+        const { encounterId, metadata, enableTranscription = true } = body;
         
         // Initialize recording session
-        const session = await audioService.startRecording({
+        const audioSession = await audioService.startRecording({
           connectionId,
           encounterId,
           metadata,
         });
 
-        // Update connection with recording info
+        let transcriptionSession = null;
+        if (enableTranscription) {
+          try {
+            // Start transcription session
+            transcriptionSession = await transcriptionService.startTranscription({
+              connectionId,
+              encounterId,
+              metadata,
+              apiGatewayClient: apigwManagementApi,
+            });
+          } catch (error) {
+            console.error('[start-recording] Failed to start transcription:', error);
+            // Continue without transcription
+          }
+        }
+
+        // Update connection with recording and transcription info
         await docClient.send(
           new UpdateCommand({
             TableName: process.env.CONNECTIONS_TABLE_NAME!,
             Key: { connectionId },
-            UpdateExpression: 'SET recordingSession = :session, #status = :status',
+            UpdateExpression: 'SET recordingSession = :recording, transcriptionSession = :transcription, #status = :status',
             ExpressionAttributeNames: {
               '#status': 'status',
             },
             ExpressionAttributeValues: {
-              ':session': session,
+              ':recording': audioSession,
+              ':transcription': transcriptionSession,
               ':status': 'recording',
             },
           })
@@ -72,8 +90,10 @@ export const handler = async (
             ConnectionId: connectionId,
             Data: JSON.stringify({
               type: 'recording-started',
-              sessionId: session.sessionId,
-              uploadUrl: session.uploadUrl,
+              sessionId: audioSession.sessionId,
+              transcriptionSessionId: transcriptionSession?.sessionId,
+              uploadUrl: audioSession.uploadUrl,
+              enableTranscription,
             }),
           })
         );
@@ -81,16 +101,34 @@ export const handler = async (
       }
 
       case 'audio-chunk': {
-        const { sessionId, chunk, sequenceNumber } = body;
+        const { sessionId, chunk, sequenceNumber, transcriptionSessionId } = body;
         
         try {
-          // Process audio chunk
-          await audioService.processAudioChunk({
+          // Process audio chunk for recording
+          const recordingResult = await audioService.processAudioChunk({
             connectionId,
             sessionId,
             chunk,
             sequenceNumber,
           });
+
+          // Only process for transcription if not a duplicate
+          if (transcriptionSessionId && recordingResult.status !== 'duplicate') {
+            try {
+              // Send audio chunks to live transcription
+              const transcript = await transcriptionService.processAudioChunk({
+                sessionId: transcriptionSessionId,
+                chunk,
+                sequenceNumber,
+              });
+              
+              // Note: Live transcripts are sent directly via WebSocket from the transcription service
+              // No need to handle the response here
+            } catch (transcriptionError) {
+              console.error('[audio-chunk] Transcription error:', transcriptionError);
+              // Continue processing even if transcription fails
+            }
+          }
 
           // Send acknowledgment
           await apigwManagementApi.send(
@@ -99,6 +137,8 @@ export const handler = async (
               Data: JSON.stringify({
                 type: 'chunk-received',
                 sequenceNumber,
+                status: recordingResult.status,
+                transcribed: false,
               }),
             })
           );
@@ -126,23 +166,48 @@ export const handler = async (
       }
 
       case 'stop-recording': {
-        const { sessionId } = body;
-        console.log(`[stop-recording] Processing stop for session: ${sessionId}, connection: ${connectionId}`);
+        const { sessionId, transcriptionSessionId } = body;
+        console.log(`[stop-recording] Processing stop for sessions:`, { sessionId, transcriptionSessionId });
         
         try {
-          // Finalize recording
-          const result = await audioService.stopRecording({
+          // Finalize recording first to get the S3 key
+          const recordingResult = await audioService.stopRecording({
             connectionId,
             sessionId,
           });
-          console.log(`[stop-recording] Recording finalized:`, result);
+          console.log(`[stop-recording] Recording finalized:`, recordingResult);
+
+          // Stop transcription session
+          let transcriptionResult = null;
+          if (transcriptionSessionId) {
+            try {
+              // Stop the live transcription session
+              transcriptionResult = await transcriptionService.stopTranscription({
+                sessionId: transcriptionSessionId,
+              });
+              console.log(`[stop-recording] Live transcription stopped:`, transcriptionResult);
+              
+              // Only transcribe from S3 if we didn't get any live transcripts
+              if (transcriptionResult.transcriptCount === 0 && recordingResult.s3Key) {
+                console.log(`[stop-recording] No live transcripts found, falling back to S3 transcription`);
+                transcriptionResult = await transcriptionService.transcribeFromS3({
+                  sessionId: transcriptionSessionId,
+                  s3Key: recordingResult.s3Key,
+                  encounterId: recordingResult.encounterId,
+                });
+                console.log(`[stop-recording] S3 transcription completed:`, transcriptionResult);
+              }
+            } catch (transcriptionError) {
+              console.error(`[stop-recording] Transcription error:`, transcriptionError);
+            }
+          }
 
           // Update connection status
           await docClient.send(
             new UpdateCommand({
               TableName: process.env.CONNECTIONS_TABLE_NAME!,
               Key: { connectionId },
-              UpdateExpression: 'SET #status = :status, recordingSession = :empty',
+              UpdateExpression: 'SET #status = :status, recordingSession = :empty, transcriptionSession = :empty',
               ExpressionAttributeNames: {
                 '#status': 'status',
               },
@@ -158,9 +223,11 @@ export const handler = async (
           const responseData = {
             type: 'recording-stopped',
             sessionId,
-            recordingId: result.recordingId,
-            duration: result.duration,
-            s3Key: result.s3Key,
+            recordingId: recordingResult.recordingId,
+            duration: recordingResult.duration,
+            s3Key: recordingResult.s3Key,
+            transcriptionSessionId,
+            transcriptCount: transcriptionResult?.transcriptCount || 0,
           };
           console.log(`[stop-recording] Sending response:`, responseData);
           

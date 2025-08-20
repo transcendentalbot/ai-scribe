@@ -36,7 +36,7 @@ export function RecordingInterface({
     onRecordingStart: () => {
       // Recording started
     },
-    onRecordingStop: (recordingId) => {
+    onRecordingStop: () => {
       // Recording stopped
       toast.success('Recording saved successfully');
       setIsProcessing(false);

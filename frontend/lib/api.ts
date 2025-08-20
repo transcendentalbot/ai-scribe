@@ -155,6 +155,38 @@ export const recordingApi = {
   },
 };
 
+export const transcriptApi = {
+  getTranscripts: async (encounterId: string) => {
+    const response = await api.get<{
+      success: boolean;
+      data: {
+        transcripts: Array<{
+          encounterId: string;
+          timestamp: number;
+          text: string;
+          speaker?: string;
+          confidence?: number;
+          entities?: Array<{
+            type: 'medication' | 'symptom' | 'vital' | 'condition';
+            text: string;
+            value?: string;
+            unit?: string;
+            attributes?: Record<string, unknown>;
+          }>;
+          isPartial?: boolean;
+        }>;
+        count: number;
+      };
+    }>(`/encounters/${encounterId}/transcripts`);
+    return response.data.data;
+  },
+
+  updateSpeaker: async (transcriptId: string, speaker: string) => {
+    const response = await api.put(`/transcripts/${transcriptId}/speaker`, { speaker });
+    return response.data.data;
+  },
+};
+
 export const encounterApi = {
   getDailyList: async (date?: string, providerId?: string) => {
     const params = new URLSearchParams();

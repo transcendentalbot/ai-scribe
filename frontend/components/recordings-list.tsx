@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { Play, Pause, Download, Mic, Clock, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,18 +29,7 @@ export function RecordingsList({ encounterId, onNewRecording }: RecordingsListPr
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
-  useEffect(() => {
-    fetchRecordings();
-    return () => {
-      // Cleanup audio on unmount
-      if (audioElement) {
-        audioElement.pause();
-        audioElement.src = '';
-      }
-    };
-  }, [encounterId]);
-
-  const fetchRecordings = async () => {
+  const fetchRecordings = useCallback(async () => {
     try {
       setLoading(true);
       const data = await recordingApi.getRecordings(encounterId);
@@ -51,7 +40,22 @@ export function RecordingsList({ encounterId, onNewRecording }: RecordingsListPr
     } finally {
       setLoading(false);
     }
-  };
+  }, [encounterId]);
+
+  useEffect(() => {
+    fetchRecordings();
+  }, [fetchRecordings]);
+
+  useEffect(() => {
+    return () => {
+      // Cleanup audio on unmount
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.src = '';
+      }
+    };
+  }, [audioElement]);
+
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -107,13 +111,15 @@ export function RecordingsList({ encounterId, onNewRecording }: RecordingsListPr
   // Refresh recordings when a new one is added
   useEffect(() => {
     if (onNewRecording) {
-      const originalCallback = onNewRecording;
-      onNewRecording = () => {
-        originalCallback();
-        fetchRecordings();
-      };
+      // Store the callback so parent component can trigger refresh
+      const windowWithCallback = window as Window & { _refreshRecordings?: () => void };
+      windowWithCallback._refreshRecordings = fetchRecordings;
     }
-  }, [onNewRecording]);
+    return () => {
+      const windowWithCallback = window as Window & { _refreshRecordings?: () => void };
+      delete windowWithCallback._refreshRecordings;
+    };
+  }, [fetchRecordings, onNewRecording]);
 
   if (loading) {
     return (

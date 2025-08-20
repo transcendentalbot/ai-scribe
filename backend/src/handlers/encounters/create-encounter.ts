@@ -32,27 +32,54 @@ const encryptPHI = (text: string): string => {
 
 const createEncounterHandler = async (event: APIGatewayProxyEvent, context: Context) => {
   const startTime = Date.now();
+  const requestId = context.awsRequestId;
+  
+  logger.info('[CREATE_ENCOUNTER] Handler started', {
+    requestId,
+    timestamp: new Date().toISOString(),
+    method: event.httpMethod,
+    path: event.path,
+    userAgent: event.headers['User-Agent'],
+    origin: event.headers.Origin
+  });
   
   // Get provider ID from token
+  logger.info('[CREATE_ENCOUNTER] Extracting token', { requestId });
   const token = getAuthToken(event);
+  
+  logger.info('[CREATE_ENCOUNTER] Decoding token', { requestId, hasToken: !!token });
   // Decode the access token to get the user ID
   const decodedToken = jwt.decode(token) as any;
   const providerId = decodedToken?.sub || decodedToken?.username;
   
+  logger.info('[CREATE_ENCOUNTER] Provider extracted', { requestId, providerId: providerId ? 'PRESENT' : 'MISSING' });
+  
   if (!providerId) {
+    logger.error('[CREATE_ENCOUNTER] No provider ID found', { requestId, decodedToken });
     throw new AuthorizationError('Provider ID not found');
   }
 
   // Validate request body
+  logger.info('[CREATE_ENCOUNTER] Validating request body', { requestId, bodyLength: event.body?.length || 0 });
   const encounterData = validateBody(event, CreateEncounterSchema);
+  logger.info('[CREATE_ENCOUNTER] Request body validated successfully', { 
+    requestId, 
+    type: encounterData.type,
+    hasPatientId: !!encounterData.patientId,
+    hasPatientName: !!encounterData.patientName,
+    hasPatientMRN: !!encounterData.patientMRN
+  });
 
   // Check consent
+  logger.info('[CREATE_ENCOUNTER] Checking consent', { requestId, consentObtained: encounterData.consentObtained });
   if (!encounterData.consentObtained) {
+    logger.error('[CREATE_ENCOUNTER] Consent not obtained', { requestId });
     throw new ValidationError('Consent must be obtained before creating an encounter');
   }
 
-  logger.info('Creating encounter', {
-    providerId,
+  logger.info('[CREATE_ENCOUNTER] Starting encounter creation process', {
+    requestId,
+    providerId: providerId ? 'PRESENT' : 'MISSING',
     type: encounterData.type,
     hasPatientId: !!encounterData.patientId,
     hasPatientInfo: !!(encounterData.patientName && encounterData.patientMRN)
@@ -62,12 +89,24 @@ const createEncounterHandler = async (event: APIGatewayProxyEvent, context: Cont
 
   // If no patient ID, check if we need to create or find patient
   if (!patientId && encounterData.patientName && encounterData.patientMRN) {
+    logger.info('[CREATE_ENCOUNTER] No patient ID provided, checking for existing patient', { 
+      requestId, 
+      patientMRN: encounterData.patientMRN 
+    });
+    
     // Check if patient with MRN exists
     const existingPatient = await patientService.getPatientByMrn(encounterData.patientMRN);
+    logger.info('[CREATE_ENCOUNTER] Patient lookup complete', { 
+      requestId, 
+      found: !!existingPatient,
+      patientId: existingPatient?.id 
+    });
     
     if (existingPatient) {
       patientId = existingPatient.id;
+      logger.info('[CREATE_ENCOUNTER] Using existing patient', { requestId, patientId });
     } else {
+      logger.info('[CREATE_ENCOUNTER] Creating new patient', { requestId });
       // Create new patient with minimal info
       const newPatient = await patientService.createPatient({
         firstName: encounterData.patientName.split(' ')[0] || encounterData.patientName,
@@ -79,13 +118,16 @@ const createEncounterHandler = async (event: APIGatewayProxyEvent, context: Cont
         encryptedMrn: encryptPHI(encounterData.patientMRN),
       } as any, providerId);
       patientId = newPatient.id;
+      logger.info('[CREATE_ENCOUNTER] New patient created', { requestId, patientId });
     }
   }
 
   if (!patientId) {
+    logger.error('[CREATE_ENCOUNTER] No patient ID resolved', { requestId });
     throw new ValidationError('Either patient ID or patient name/MRN must be provided');
   }
 
+  logger.info('[CREATE_ENCOUNTER] Creating encounter in database', { requestId, patientId });
   // Create encounter with the resolved patient ID
   const encounter = await encounterService.createEncounter({
     type: encounterData.type,
@@ -93,21 +135,44 @@ const createEncounterHandler = async (event: APIGatewayProxyEvent, context: Cont
     patientId,
     scheduledAt: new Date().toISOString(), // Set to now for immediate encounters
   }, providerId);
+  
+  logger.info('[CREATE_ENCOUNTER] Encounter created successfully', { 
+    requestId, 
+    encounterId: encounter.id,
+    patientId: encounter.patientId 
+  });
 
   // Log PHI access
+  logger.info('[CREATE_ENCOUNTER] Logging PHI access audit', { requestId });
   logger.audit('ENCOUNTER_CREATED', providerId, encounter.id, {
     patientId: encounter.patientId,
     action: 'CREATE',
   });
 
   // Track metrics
+  logger.info('[CREATE_ENCOUNTER] Recording metrics', { requestId });
   metrics.success('CreateEncounter');
   metrics.duration('CreateEncounterDuration', startTime);
   metrics.count('EncounterType', 1, 'Count', { Type: encounter.type });
 
-  return response.success({
+  logger.info('[CREATE_ENCOUNTER] Preparing response', { 
+    requestId, 
+    encounterId: encounter.id,
+    duration: Date.now() - startTime 
+  });
+
+  const responseData = {
     encounter,
-  }, 201);
+  };
+  
+  logger.info('[CREATE_ENCOUNTER] Sending response', { 
+    requestId, 
+    statusCode: 201,
+    responseSize: JSON.stringify(responseData).length,
+    totalDuration: Date.now() - startTime 
+  });
+
+  return response.success(responseData, 201);
 };
 
 export const handler = errorHandler(createEncounterHandler);

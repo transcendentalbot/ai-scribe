@@ -61,48 +61,132 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
 
   // Create encounter mutation
   const createEncounterMutation = useMutation({
-    mutationFn: encounterApi.create,
+    mutationFn: (data: {
+      patientId?: string;
+      patientName?: string;
+      patientMRN?: string;
+      patientBirthdate?: string;
+      type: 'NEW_PATIENT' | 'FOLLOW_UP' | 'SICK_VISIT' | 'WELLNESS_CHECK';
+      consentObtained: boolean;
+    }) => {
+      console.log('[FRONTEND] Starting encounter creation API call', {
+        timestamp: new Date().toISOString(),
+        requestData: data,
+        url: '/encounters'
+      });
+      const startTime = performance.now();
+      
+      return encounterApi.create(data).then(result => {
+        const endTime = performance.now();
+        console.log('[FRONTEND] Encounter creation API call completed', {
+          timestamp: new Date().toISOString(),
+          duration: endTime - startTime,
+          responseData: result,
+          hasEncounter: !!result?.encounter,
+          encounterId: result?.encounter?.id,
+          responseSize: JSON.stringify(result).length
+        });
+        return result;
+      }).catch(error => {
+        const endTime = performance.now();
+        console.error('[FRONTEND] Encounter creation API call failed', {
+          timestamp: new Date().toISOString(),
+          duration: endTime - startTime,
+          error: error,
+          errorMessage: error?.message,
+          errorResponse: error?.response?.data
+        });
+        throw error;
+      });
+    },
     onSuccess: (data) => {
-      console.log('Create encounter response:', data);
+      console.log('[FRONTEND] Mutation onSuccess triggered', {
+        timestamp: new Date().toISOString(),
+        responseData: data,
+        hasEncounter: !!data?.encounter,
+        encounterId: data?.encounter?.id
+      });
+      
+      console.log('[FRONTEND] Invalidating encounters query');
       // Invalidate encounters query to refresh the list
       queryClient.invalidateQueries({ queryKey: ['encounters'] });
+      
+      console.log('[FRONTEND] Closing dialog');
       onOpenChange(false);
+      
       // Navigate to the encounter detail page
       if (data?.encounter?.id) {
+        console.log('[FRONTEND] Navigating to encounter detail page', {
+          encounterId: data.encounter.id,
+          targetUrl: `/encounters/${data.encounter.id}`
+        });
         router.push(`/encounters/${data.encounter.id}`);
       } else {
-        console.error('No encounter ID in response:', data);
+        console.error('[FRONTEND] No encounter ID in response - navigation failed', {
+          responseStructure: Object.keys(data || {}),
+          fullResponse: data
+        });
       }
     },
     onError: (error: unknown) => {
+      console.error('[FRONTEND] Mutation onError triggered', {
+        timestamp: new Date().toISOString(),
+        error: error,
+        errorType: typeof error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
       if (error && typeof error === 'object' && 'response' in error) {
         const apiError = error as { response?: { data?: { message?: string } } };
-        setError(apiError.response?.data?.message || 'Failed to create encounter');
+        const errorMessage = apiError.response?.data?.message || 'Failed to create encounter';
+        console.log('[FRONTEND] Setting error message', { errorMessage });
+        setError(errorMessage);
       } else {
+        console.log('[FRONTEND] Setting generic error message');
         setError('Failed to create encounter');
       }
     },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
+    console.log('[FRONTEND] Form submission started', {
+      timestamp: new Date().toISOString(),
+      isNewPatient,
+      encounterType,
+      consentObtained,
+      hasSelectedPatient: !!selectedPatient,
+      newPatientName,
+      newPatientMRN,
+      hasNewPatientBirthdate: !!newPatientBirthdate
+    });
+    
     e.preventDefault();
     setError('');
 
+    console.log('[FRONTEND] Validating form data');
     if (!consentObtained) {
+      console.log('[FRONTEND] Validation failed: consent not obtained');
       setError('Consent must be obtained before creating an encounter');
       return;
     }
 
     if (!isNewPatient && !selectedPatient) {
+      console.log('[FRONTEND] Validation failed: no patient selected');
       setError('Please select a patient');
       return;
     }
 
     if (isNewPatient && (!newPatientName || !newPatientMRN || !newPatientBirthdate)) {
+      console.log('[FRONTEND] Validation failed: incomplete new patient data', {
+        hasName: !!newPatientName,
+        hasMRN: !!newPatientMRN,
+        hasBirthdate: !!newPatientBirthdate
+      });
       setError('Please enter patient name, MRN, and birthdate');
       return;
     }
 
+    console.log('[FRONTEND] Form validation passed, preparing encounter data');
     const encounterData = {
       type: encounterType as 'NEW_PATIENT' | 'FOLLOW_UP' | 'SICK_VISIT' | 'WELLNESS_CHECK',
       consentObtained,
@@ -117,7 +201,22 @@ export function NewEncounterDialog({ open, onOpenChange }: NewEncounterDialogPro
           }),
     };
 
+    console.log('[FRONTEND] Calling createEncounterMutation.mutate', {
+      timestamp: new Date().toISOString(),
+      encounterData,
+      mutationStatus: createEncounterMutation.status,
+      isLoading: createEncounterMutation.isPending
+    });
+
     createEncounterMutation.mutate(encounterData);
+    
+    console.log('[FRONTEND] Mutation called, current status:', {
+      timestamp: new Date().toISOString(),
+      status: createEncounterMutation.status,
+      isPending: createEncounterMutation.isPending,
+      isError: createEncounterMutation.isError,
+      isSuccess: createEncounterMutation.isSuccess
+    });
   };
 
   const handleReset = () => {

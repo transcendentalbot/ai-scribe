@@ -83,8 +83,8 @@ export class AuthApi extends Construct {
       // Create Lambda function
       const lambdaFunction = new lambda.Function(this, `${handler.name}Function`, {
         functionName: `ai-scribe-${environment}-auth-${handler.name}`,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend')),
-        handler: `dist/handlers/auth/${handler.name}.handler`,
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend/dist')),
+        handler: `handlers/auth/${handler.name}.handler`,
         runtime: lambda.Runtime.NODEJS_18_X,
         timeout: cdk.Duration.seconds(30),
         memorySize: 256,

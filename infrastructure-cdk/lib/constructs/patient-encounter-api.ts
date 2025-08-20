@@ -71,8 +71,8 @@ export class PatientEncounterApi extends Construct {
       const functionName = `ai-scribe-${environment}-patient-${handler.name}`;
       const lambdaFunction = new lambda.Function(this, `${handler.name}Function`, {
         functionName,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend')),
-        handler: `dist/handlers/patients/${handler.name}.handler`,
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend/dist')),
+        handler: `handlers/patients/${handler.name}.handler`,
         runtime: lambda.Runtime.NODEJS_18_X,
         timeout: cdk.Duration.seconds(30),
         memorySize: 256,
@@ -110,8 +110,8 @@ export class PatientEncounterApi extends Construct {
       const functionName = `ai-scribe-${environment}-encounter-${handler.name}`;
       const lambdaFunction = new lambda.Function(this, `${handler.name}Function`, {
         functionName,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend')),
-        handler: `dist/handlers/encounters/${handler.name}.handler`,
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend/dist')),
+        handler: `handlers/encounters/${handler.name}.handler`,
         runtime: lambda.Runtime.NODEJS_18_X,
         timeout: cdk.Duration.seconds(30),
         memorySize: 256,
@@ -151,12 +151,18 @@ export class PatientEncounterApi extends Construct {
         { name: 'get-recordings', path: 'encounters/{encounterId}/recordings', method: 'GET' },
       ];
 
+      // Transcript handlers
+      const transcriptHandlers = [
+        { name: 'get-transcripts', path: 'encounters/{encounterId}/transcripts', method: 'GET' },
+        { name: 'update-speaker', path: 'transcripts/{transcriptId}/speaker', method: 'PUT' },
+      ];
+
       recordingHandlers.forEach(handler => {
         const functionName = `ai-scribe-${environment}-recording-${handler.name}`;
         const lambdaFunction = new lambda.Function(this, `recording-${handler.name}Function`, {
           functionName,
-          code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend')),
-          handler: `dist/handlers/recordings/${handler.name}.handler`,
+          code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend/dist')),
+          handler: `handlers/recordings/${handler.name}.handler`,
           runtime: lambda.Runtime.NODEJS_18_X,
           timeout: cdk.Duration.seconds(30),
           memorySize: 256,
@@ -176,6 +182,47 @@ export class PatientEncounterApi extends Construct {
 
         // Store function reference
         this.functions[`recording-${handler.name}`] = lambdaFunction;
+
+        // Add API Gateway integration
+        const integration = new apigateway.LambdaIntegration(lambdaFunction);
+        
+        // Create resource path
+        const pathParts = handler.path.split('/');
+        let currentResource = api.root;
+        
+        for (const part of pathParts) {
+          const existingResource = currentResource.getResource(part);
+          currentResource = existingResource || currentResource.addResource(part);
+        }
+
+        // Add method with authorization
+        currentResource.addMethod(handler.method, integration, {
+          authorizationType: apigateway.AuthorizationType.COGNITO,
+          authorizer: authorizer,
+        });
+      });
+
+      // Setup transcript handlers
+      transcriptHandlers.forEach(handler => {
+        const functionName = `ai-scribe-${environment}-transcript-${handler.name}`;
+        const lambdaFunction = new lambda.Function(this, `transcript-${handler.name}Function`, {
+          functionName,
+          code: lambda.Code.fromAsset(path.join(__dirname, '../../..', 'backend/dist')),
+          handler: `handlers/transcripts/${handler.name}.handler`,
+          runtime: lambda.Runtime.NODEJS_18_X,
+          timeout: cdk.Duration.seconds(30),
+          memorySize: 256,
+          environment: {
+            ...commonEnv,
+          },
+          role: lambdaRole,
+        });
+        
+        // Grant DynamoDB permissions
+        mainTable.grantReadWriteData(lambdaFunction);
+
+        // Store function reference
+        this.functions[`transcript-${handler.name}`] = lambdaFunction;
 
         // Add API Gateway integration
         const integration = new apigateway.LambdaIntegration(lambdaFunction);

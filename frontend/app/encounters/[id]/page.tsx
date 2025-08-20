@@ -15,10 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConsentDialog } from '@/components/consent-dialog';
-import { RecordingInterface } from '@/components/recording-interface';
-import { SimpleRecordingInterface } from '@/components/simple-recording-interface';
-import { WebSocketTestRecording } from '@/components/websocket-test-recording';
-import { WebSocketDebugRecording } from '@/components/websocket-debug-recording';
+import { RealTimeTranscription } from '@/components/real-time-transcription';
 import { RecordingsList } from '@/components/recordings-list';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -75,14 +72,55 @@ export default function EncounterDetailPage() {
   const queryClient = useQueryClient();
   const { user, logout } = useAuth();
   const [showConsentDialog, setShowConsentDialog] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
 
-  const { data: encounter, isLoading } = useQuery({
+  const { data: encounter, isLoading, error } = useQuery({
     queryKey: ['encounter', id],
     queryFn: async () => {
-      const response = await encounterApi.getById(id as string);
-      return response.encounter;
+      console.log('[ENCOUNTER_DETAIL] Starting encounter fetch', {
+        timestamp: new Date().toISOString(),
+        encounterId: id,
+        url: `/encounters/${id}`
+      });
+      const startTime = performance.now();
+      
+      try {
+        const response = await encounterApi.getById(id as string);
+        const endTime = performance.now();
+        
+        console.log('[ENCOUNTER_DETAIL] Encounter fetch completed successfully', {
+          timestamp: new Date().toISOString(),
+          encounterId: id,
+          duration: endTime - startTime,
+          hasEncounter: !!response?.encounter,
+          encounterStatus: response?.encounter?.status,
+          responseSize: JSON.stringify(response).length
+        });
+        
+        return response.encounter;
+      } catch (error) {
+        const endTime = performance.now();
+        
+        console.error('[ENCOUNTER_DETAIL] Encounter fetch failed', {
+          timestamp: new Date().toISOString(),
+          encounterId: id,
+          duration: endTime - startTime,
+          error: error,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        });
+        
+        throw error;
+      }
     },
+  });
+
+  // Log loading state changes
+  console.log('[ENCOUNTER_DETAIL] Query state update', {
+    timestamp: new Date().toISOString(),
+    encounterId: id,
+    isLoading,
+    hasError: !!error,
+    hasData: !!encounter,
+    queryStatus: isLoading ? 'loading' : error ? 'error' : encounter ? 'success' : 'idle'
   });
 
   const updateStatusMutation = useMutation({
@@ -230,12 +268,9 @@ export default function EncounterDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Recording Interface - Using Simple Recording for now */}
+            {/* Real-time Transcription Interface */}
             {encounter.status === EncounterStatus.IN_PROGRESS && hasRecordingConsent && (
-              <>
-                <SimpleRecordingInterface encounterId={encounter.id} />
-                <WebSocketDebugRecording encounterId={encounter.id} />
-              </>
+              <RealTimeTranscription encounterId={encounter.id} />
             )}
             
             {/* Recordings List - Show for all statuses if there are recordings */}
