@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Encounter, Patient, EncounterStatus, ConsentType } from '@/types';
 import { debugLog } from '@/utils/debug-logger';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://gy8gxc5m3c.execute-api.us-east-1.amazonaws.com/prod';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://41h7fp3vk7.execute-api.us-east-1.amazonaws.com/prod';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
