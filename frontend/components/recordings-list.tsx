@@ -21,6 +21,8 @@ interface Recording {
   fileSize?: number;
   createdAt?: string;
   debugInfo?: unknown;
+  isPlayable?: boolean;
+  needsConversion?: boolean;
 }
 
 interface RecordingsListProps {
@@ -266,6 +268,8 @@ export function RecordingsList({ encounterId, onNewRecording, onRecordingSelect 
                     variant="ghost"
                     className="rounded-full"
                     onClick={() => handlePlayPause(recording)}
+                    disabled={recording.isPlayable === false}
+                    title={recording.isPlayable === false ? 'PCM audio cannot be played directly' : undefined}
                   >
                     {playingId === recording.id ? (
                       <Pause className="h-4 w-4" />
@@ -290,6 +294,11 @@ export function RecordingsList({ encounterId, onNewRecording, onRecordingSelect 
                   {recording.transcriptionId && (
                     <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                       Transcribed
+                    </span>
+                  )}
+                  {recording.needsConversion && (
+                    <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                      PCM Format
                     </span>
                   )}
                   <Button

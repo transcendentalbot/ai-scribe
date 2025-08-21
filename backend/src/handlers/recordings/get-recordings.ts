@@ -78,13 +78,19 @@ export const handler = async (
             urlPreview: presignedUrl.substring(0, 100) + '...',
           });
 
+          // Check if this is a PCM file that needs conversion for playback
+          const isPCM = recording.s3Key.endsWith('.pcm') || recording.s3Key.endsWith('.raw');
+          
           return {
             ...recording,
             url: presignedUrl,
+            isPlayable: !isPCM,  // PCM files cannot be played directly in browsers
+            needsConversion: isPCM,
             debugInfo: {
               generatedContentType: contentType,
               originalMimeType: recording.mimeType,
               s3Key: recording.s3Key,
+              isPCM: isPCM,
             }
           };
         } catch (error) {

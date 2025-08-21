@@ -136,8 +136,8 @@ class AudioService {
     
     // Check for PCM format first
     if (metadata?.format === 'pcm' || metadata?.encoding === 'linear16') {
-      audioFormat = 'raw';
-      contentType = 'audio/raw';
+      audioFormat = 'pcm';  // Use .pcm extension instead of .raw
+      contentType = 'audio/basic';  // Standard MIME type for PCM
       console.log(`[AudioService] Detected PCM/raw audio format`);
     } else if (metadata?.codec?.includes('mp4')) {
       audioFormat = 'mp4';
