@@ -65,19 +65,69 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       },
     };
 
-    return response.success(authResponse);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token, Accept, Origin',
+      },
+      body: JSON.stringify({
+        success: true,
+        data: authResponse,
+      }),
+    };
 
   } catch (error: any) {
     console.error('Login error:', error);
 
     if (error.name === 'ZodError') {
-      return response.error('Validation failed', 400, error.errors);
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token, Accept, Origin',
+        },
+        body: JSON.stringify({
+          success: false,
+          message: 'Validation failed',
+          errors: error.errors,
+        }),
+      };
     }
 
     if (error instanceof AppError) {
-      return response.error(error.message, error.statusCode, error.errors);
+      return {
+        statusCode: error.statusCode,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token, Accept, Origin',
+        },
+        body: JSON.stringify({
+          success: false,
+          message: error.message,
+          errors: error.errors,
+        }),
+      };
     }
 
-    return response.error('Login failed', 500);
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token, Accept, Origin',
+      },
+      body: JSON.stringify({
+        success: false,
+        message: 'Login failed',
+      }),
+    };
   }
 };
