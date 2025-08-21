@@ -208,7 +208,7 @@ export class NotesApi extends Construct {
     // /encounters/{encounterId}/notes resource
     const encountersResource = api.root.getResource('encounters') || api.root.addResource('encounters');
     const encounterResource = encountersResource.getResource('{encounterId}') || encountersResource.addResource('{encounterId}');
-    const encounterNotesResource = encounterResource.addResource('notes');
+    const encounterNotesResource = encounterResource.getResource('notes') || encounterResource.addResource('notes');
 
     // GET /encounters/{encounterId}/notes
     encounterNotesResource.addMethod('GET', new apigateway.LambdaIntegration(this.functions.getEncounterNotesFunction), {
@@ -223,16 +223,7 @@ export class NotesApi extends Construct {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
-    // Add CORS to all resources
-    this.addCorsOptions(notesResource);
-    this.addCorsOptions(noteResource);
-    this.addCorsOptions(signResource);
-    this.addCorsOptions(historyResource);
-    this.addCorsOptions(codesResource);
-    this.addCorsOptions(icd10Resource);
-    this.addCorsOptions(cptResource);
-    this.addCorsOptions(encounterNotesResource);
-    this.addCorsOptions(generateNoteResource);
+    // CORS is handled by the main API gateway default configuration
   }
 
   private addCorsOptions(resource: apigateway.Resource) {

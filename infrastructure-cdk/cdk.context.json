@@ -1,0 +1,19 @@
+{
+  "environments": {
+    "sathya-dev": {
+      "stage": "sathya-dev",
+      "alertEmail": "sathya@healthspaceai.com",
+      "description": "Sathya's personal development environment for SOAP notes testing"
+    },
+    "dev": {
+      "stage": "dev", 
+      "alertEmail": "dev@healthspaceai.com",
+      "description": "General development environment"
+    },
+    "prod": {
+      "stage": "prod",
+      "alertEmail": "alerts@healthspaceai.com", 
+      "description": "Production environment"
+    }
+  }
+}

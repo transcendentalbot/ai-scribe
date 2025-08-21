@@ -2,8 +2,8 @@ import { EventBridgeEvent, Context } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
-import OpenAI from 'openai';
+import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../utils/logger';
 import { metrics } from '../../utils/metrics';
@@ -20,67 +20,54 @@ import {
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 const s3Client = new S3Client({});
-const secretsClient = new SecretsManagerClient({});
+const bedrockClient = new BedrockRuntimeClient({});
+const ssmClient = new SSMClient({});
 
-// OpenAI client cache
-let openaiClient: OpenAI | null = null;
-let openaiApiKey: string = '';
+// Bedrock model cache
+let bedrockModelId: string = '';
 
-// Configuration from PRP
-const OPENAI_SECRET_NAME = process.env.OPENAI_SECRET_NAME || '';
-const GPT_CONFIG = {
-  model: 'gpt-4-turbo',
+// Configuration for Claude 3 Sonnet (equivalent to GPT-4 performance)
+const CLAUDE_CONFIG = {
   temperature: 0.3,
   max_tokens: 2000,
   timeout: 8000, // 8 seconds, leaving 2s buffer for 10s requirement
 };
 
 /**
- * Get OpenAI client with cached API key
- * Following exact pattern from transcription service
+ * Get Bedrock model ID with caching
+ * Uses AWS Systems Manager Parameter Store
  */
-async function getOpenAIClient(): Promise<OpenAI> {
-  if (!openaiClient && OPENAI_SECRET_NAME) {
+async function getBedrockModelId(): Promise<string> {
+  if (!bedrockModelId) {
     try {
-      logger.info('[OpenAI] Loading API key from secret', { secretName: OPENAI_SECRET_NAME });
+      logger.info('[Bedrock] Loading model ID from SSM parameter');
       
-      const secretResponse = await secretsClient.send(
-        new GetSecretValueCommand({
-          SecretId: OPENAI_SECRET_NAME,
+      const parameterResponse = await ssmClient.send(
+        new GetParameterCommand({
+          Name: `/ai-scribe-sathya-dev/bedrock-model-id`,
         })
       );
 
-      if (secretResponse.SecretString) {
-        openaiApiKey = secretResponse.SecretString;
-        logger.info('[OpenAI] API key loaded successfully');
-        openaiClient = new OpenAI({ 
-          apiKey: openaiApiKey,
-          timeout: GPT_CONFIG.timeout,
-        });
-      } else {
-        throw new Error(`Secret ${OPENAI_SECRET_NAME} has no value`);
+      if (!parameterResponse.Parameter?.Value) {
+        throw new Error('Bedrock model ID not found in SSM parameter');
       }
+
+      bedrockModelId = parameterResponse.Parameter.Value;
+      logger.info('[Bedrock] Model ID loaded successfully', { modelId: bedrockModelId });
     } catch (error) {
-      logger.error('[OpenAI] Failed to load API key from secret', { 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        secretName: OPENAI_SECRET_NAME,
-      });
-      throw new Error('Failed to initialize OpenAI client');
+      logger.error('[Bedrock] Failed to load model ID', { error });
+      throw error;
     }
   }
 
-  if (!openaiClient) {
-    throw new Error('OpenAI client not available');
-  }
-
-  return openaiClient;
+  return bedrockModelId;
 }
 
 /**
- * Generate SOAP note using GPT-4 with exact prompt from PRP
+ * Generate SOAP note using Claude 3 Sonnet via AWS Bedrock
  */
 async function generateSOAPNote(transcript: string): Promise<SOAPSections> {
-  const client = await getOpenAIClient();
+  const modelId = await getBedrockModelId();
   
   // Exact GPT-4 configuration from PRP
   const messages = [

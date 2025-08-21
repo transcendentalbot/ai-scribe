@@ -1,0 +1,10 @@
+# Ignore backend and infrastructure during Vercel deployment
+backend/
+infrastructure/
+infrastructure-cdk/
+docs/
+*.md
+!README.md
+.aws/
+.env.local
+*.log

@@ -262,10 +262,10 @@ export class AiScribeStack extends cdk.Stack {
         types: [apigateway.EndpointType.REGIONAL],
       },
       defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token'],
-        allowCredentials: true,
+        allowOrigins: ['*'],
+        allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token', 'Accept', 'Origin'],
+        allowCredentials: false,
       },
     });
 
@@ -291,6 +291,12 @@ export class AiScribeStack extends cdk.Stack {
       mainTable: this.mainTable,
       environment: stage,
       audioBucket: this.audioBucket,
+    });
+
+    // OpenAI Secret for SOAP note generation (moved up for dependency)
+    const openaiSecret = new secretsmanager.Secret(this, 'OpenAISecret', {
+      secretName: `${this.stackName}-openai`,
+      description: 'OpenAI GPT-4 API key for SOAP note generation',
     });
 
     // Clinical Notes API
@@ -537,11 +543,6 @@ export class AiScribeStack extends cdk.Stack {
       description: 'Deepgram API key',
     });
 
-    // OpenAI Secret for SOAP note generation
-    const openaiSecret = new secretsmanager.Secret(this, 'OpenAISecret', {
-      secretName: `${this.stackName}-openai`,
-      description: 'OpenAI GPT-4 API key for SOAP note generation',
-    });
 
     // Grant audioStreamHandler permission to read Deepgram secret
     deepgramSecret.grantRead(audioStreamHandler);
