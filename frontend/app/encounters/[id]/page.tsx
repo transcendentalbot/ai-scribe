@@ -276,6 +276,29 @@ export default function EncounterDetailPage() {
             {/* Recordings List - Show for all statuses if there are recordings */}
             <RecordingsList encounterId={encounter.id} />
 
+            {/* Clinical Notes */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Clinical Notes
+                  </CardTitle>
+                  <Button
+                    onClick={() => router.push(`/encounters/${encounter.id}/notes`)}
+                    variant="outline"
+                  >
+                    View Notes
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Generate and manage SOAP notes from encounter transcripts.
+                </p>
+              </CardContent>
+            </Card>
+
             {/* Chief Complaint */}
             {encounter.chiefComplaint && (
               <Card>

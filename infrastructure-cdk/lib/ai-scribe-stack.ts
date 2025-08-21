@@ -18,10 +18,12 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as path from 'path';
 import { AuthApi } from './constructs/auth-api';
 import { PatientEncounterApi } from './constructs/patient-encounter-api';
+import { NotesApi } from './constructs/notes-api';
 
 export interface AiScribeStackProps extends cdk.StackProps {
   stage: string;
@@ -290,6 +292,17 @@ export class AiScribeStack extends cdk.Stack {
       environment: stage,
       audioBucket: this.audioBucket,
     });
+
+    // Clinical Notes API
+    new NotesApi(this, 'NotesApi', {
+      api: this.api,
+      userPool: this.userPool,
+      mainTable: this.mainTable,
+      environment: stage,
+      audioBucket: this.audioBucket,
+      openaiSecret: openaiSecret,
+      eventBusName: `ai-scribe-${stage}-event-bus`,
+    });
     
     // Attach the authorizer to the API
     (authorizer as any)._attachToApi(this.api);
@@ -352,6 +365,7 @@ export class AiScribeStack extends cdk.Stack {
         TABLE_NAME: this.mainTable.tableName,
         AUDIO_BUCKET_NAME: this.audioBucket.bucketName,
         DEEPGRAM_SECRET_NAME: `${this.stackName}-deepgram`,
+        EVENT_BUS_NAME: `ai-scribe-${stage}-event-bus`,
       },
       memorySize: 1024, // Increased for transcription processing
       timeout: cdk.Duration.seconds(30),
@@ -369,6 +383,12 @@ export class AiScribeStack extends cdk.Stack {
     audioStreamHandler.addToRolePolicy(new iam.PolicyStatement({
       actions: ['execute-api:ManageConnections'],
       resources: [executeApiArn],
+    }));
+
+    // Grant EventBridge publish permissions to audioStreamHandler
+    audioStreamHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['events:PutEvents'],
+      resources: [`arn:aws:events:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:event-bus/ai-scribe-${stage}-event-bus`],
     }));
 
     // WebSocket routes
@@ -396,9 +416,40 @@ export class AiScribeStack extends cdk.Stack {
       autoDeploy: true,
     });
 
+    // Note Generation Lambda Handler
+    const generateNoteHandler = new lambda.Function(this, 'GenerateNoteHandler', {
+      functionName: `ai-scribe-${stage}-generate-note`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'handlers/notes/generate-note.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist')),
+      environment: {
+        TABLE_NAME: this.mainTable.tableName,
+        AUDIO_BUCKET_NAME: this.audioBucket.bucketName,
+        OPENAI_SECRET_NAME: `${this.stackName}-openai`,
+        EVENT_BUS_NAME: `ai-scribe-${stage}-event-bus`,
+      },
+      memorySize: 1024, // Increased for GPT-4 API calls
+      timeout: cdk.Duration.seconds(60), // 60s for GPT-4 processing
+    });
+
+    // Grant permissions to note generation handler
+    this.mainTable.grantReadWriteData(generateNoteHandler);
+    this.audioBucket.grantRead(generateNoteHandler);
+    openaiSecret.grantRead(generateNoteHandler);
+
     // EventBridge
     const eventBus = new events.EventBus(this, 'EventBus', {
       eventBusName: `ai-scribe-${stage}-event-bus`,
+    });
+
+    // EventBridge rule to trigger note generation
+    new events.Rule(this, 'TranscriptionCompletedRule', {
+      eventBus: eventBus,
+      eventPattern: {
+        source: ['ai-scribe.transcription'],
+        detailType: ['Transcription Completed'],
+      },
+      targets: [new targets.LambdaFunction(generateNoteHandler)],
     });
 
     // CloudTrail
@@ -484,6 +535,12 @@ export class AiScribeStack extends cdk.Stack {
     const deepgramSecret = new secretsmanager.Secret(this, 'DeepgramSecret', {
       secretName: `${this.stackName}-deepgram`,
       description: 'Deepgram API key',
+    });
+
+    // OpenAI Secret for SOAP note generation
+    const openaiSecret = new secretsmanager.Secret(this, 'OpenAISecret', {
+      secretName: `${this.stackName}-openai`,
+      description: 'OpenAI GPT-4 API key for SOAP note generation',
     });
 
     // Grant audioStreamHandler permission to read Deepgram secret

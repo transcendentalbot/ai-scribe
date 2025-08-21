@@ -4,6 +4,7 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
 import { audioService } from '../../services/audio.service';
 import { transcriptionService } from '../../services/transcription.service';
+import { publishTranscriptionCompletedEvent } from '../../services/event.service';
 
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
@@ -229,6 +230,29 @@ export const handler = async (
             })
           );
           console.log(`[stop-recording] Response sent successfully`);
+
+          // Publish transcription completed event for note generation
+          try {
+            const connectionData = connectionResult.Item!;
+            await publishTranscriptionCompletedEvent({
+              encounterId: recordingResult.encounterId || encounterId,
+              recordingId: recordingResult.recordingId,
+              transcriptCount: transcriptionResult?.transcriptCount || 0,
+              providerId: connectionData.userId,
+              completedAt: new Date().toISOString(),
+              requestId: event.requestContext.requestId,
+              duration: recordingResult.duration,
+              metadata: {
+                transcriptionSessionId,
+                s3Key: recordingResult.s3Key,
+                connectionId,
+              },
+            });
+            console.log(`[stop-recording] Transcription completed event published`);
+          } catch (eventError) {
+            // Don't fail the recording completion if event publishing fails
+            console.error(`[stop-recording] Failed to publish event:`, eventError);
+          }
         } catch (error) {
           console.error(`[stop-recording] Error processing stop:`, error);
           throw error;

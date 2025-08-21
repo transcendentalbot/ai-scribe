@@ -1,0 +1,38 @@
+{
+  "icd10": [
+    {"code": "E11.9", "description": "Type 2 diabetes mellitus without complications", "keywords": ["diabetes", "DM2", "hyperglycemia", "diabetic", "type 2", "T2DM"]},
+    {"code": "I10", "description": "Essential hypertension", "keywords": ["hypertension", "high blood pressure", "HTN", "elevated BP"]},
+    {"code": "E78.5", "description": "Hyperlipidemia, unspecified", "keywords": ["hyperlipidemia", "high cholesterol", "dyslipidemia", "cholesterol"]},
+    {"code": "Z00.00", "description": "Encounter for general adult medical examination", "keywords": ["annual physical", "routine exam", "wellness check", "physical"]},
+    {"code": "J06.9", "description": "Acute upper respiratory infection, unspecified", "keywords": ["cold", "URI", "upper respiratory", "sore throat", "congestion"]},
+    {"code": "M79.3", "description": "Panniculitis, unspecified", "keywords": ["back pain", "muscle pain", "myalgia", "arthralgia"]},
+    {"code": "R06.02", "description": "Shortness of breath", "keywords": ["dyspnea", "SOB", "breathing difficulty", "shortness of breath"]},
+    {"code": "R50.9", "description": "Fever, unspecified", "keywords": ["fever", "elevated temperature", "pyrexia", "febrile"]},
+    {"code": "K21.9", "description": "Gastro-esophageal reflux disease", "keywords": ["GERD", "acid reflux", "heartburn", "indigestion"]},
+    {"code": "F32.9", "description": "Major depressive disorder, single episode, unspecified", "keywords": ["depression", "depressive", "mood disorder", "sad", "MDD"]},
+    {"code": "F41.9", "description": "Anxiety disorder, unspecified", "keywords": ["anxiety", "anxious", "panic", "worry", "stress"]},
+    {"code": "E66.9", "description": "Obesity, unspecified", "keywords": ["obesity", "overweight", "BMI", "weight management"]},
+    {"code": "M25.50", "description": "Pain in unspecified joint", "keywords": ["joint pain", "arthritis", "knee pain", "hip pain"]},
+    {"code": "R51", "description": "Headache", "keywords": ["headache", "migraine", "head pain", "cephalgia"]},
+    {"code": "N39.0", "description": "Urinary tract infection", "keywords": ["UTI", "urinary infection", "bladder infection", "cystitis"]},
+    {"code": "J45.9", "description": "Asthma, unspecified", "keywords": ["asthma", "bronchospasm", "wheezing", "reactive airway"]},
+    {"code": "L30.9", "description": "Dermatitis, unspecified", "keywords": ["dermatitis", "eczema", "rash", "skin irritation"]},
+    {"code": "M54.5", "description": "Low back pain", "keywords": ["low back pain", "LBP", "lumbar pain", "sciatica"]},
+    {"code": "R10.9", "description": "Unspecified abdominal pain", "keywords": ["abdominal pain", "stomach pain", "belly pain", "GI pain"]},
+    {"code": "G43.909", "description": "Migraine, unspecified", "keywords": ["migraine", "severe headache", "vascular headache"]}
+  ],
+  "cpt": [
+    {"code": "99213", "description": "Office visit, established patient, 15 minutes", "visitType": "followup", "minDuration": 10, "maxDuration": 20},
+    {"code": "99214", "description": "Office visit, established patient, 25 minutes", "visitType": "followup", "minDuration": 20, "maxDuration": 30},
+    {"code": "99215", "description": "Office visit, established patient, 40 minutes", "visitType": "followup", "minDuration": 30, "maxDuration": 60},
+    {"code": "99203", "description": "Office visit, new patient, 30 minutes", "visitType": "new", "minDuration": 20, "maxDuration": 40},
+    {"code": "99204", "description": "Office visit, new patient, 45 minutes", "visitType": "new", "minDuration": 40, "maxDuration": 60},
+    {"code": "99205", "description": "Office visit, new patient, 60 minutes", "visitType": "new", "minDuration": 60, "maxDuration": 90},
+    {"code": "99212", "description": "Office visit, established patient, 10 minutes", "visitType": "followup", "minDuration": 5, "maxDuration": 15},
+    {"code": "99202", "description": "Office visit, new patient, 15-29 minutes", "visitType": "new", "minDuration": 15, "maxDuration": 29},
+    {"code": "99211", "description": "Office visit, minimal services", "visitType": "minimal", "minDuration": 0, "maxDuration": 10},
+    {"code": "99395", "description": "Periodic comprehensive preventive medicine, 18-39 years", "visitType": "wellness", "minDuration": 20, "maxDuration": 40},
+    {"code": "99396", "description": "Periodic comprehensive preventive medicine, 40-64 years", "visitType": "wellness", "minDuration": 25, "maxDuration": 45},
+    {"code": "99397", "description": "Periodic comprehensive preventive medicine, 65+ years", "visitType": "wellness", "minDuration": 30, "maxDuration": 50}
+  ]
+}
