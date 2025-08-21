@@ -26,6 +26,8 @@ interface TranscriptionSegment {
 
 interface RealTimeTranscriptionProps {
   encounterId: string;
+  onTranscriptionStart?: () => void;
+  onTranscriptionStop?: () => void;
 }
 
 // Speaker icons
@@ -44,7 +46,7 @@ const entityIcons = {
   condition: <span className="text-xs">🏥</span>,
 };
 
-export function RealTimeTranscription({ encounterId }: RealTimeTranscriptionProps) {
+export function RealTimeTranscription({ encounterId, onTranscriptionStart, onTranscriptionStop }: RealTimeTranscriptionProps) {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionSessionId, setTranscriptionSessionId] = useState<string | null>(null);
   const [segments, setSegments] = useState<TranscriptionSegment[]>([]);
@@ -66,12 +68,14 @@ export function RealTimeTranscription({ encounterId }: RealTimeTranscriptionProp
         setTranscriptionSessionId(data.transcriptionSessionId);
         setStatus('transcribing');
         toast.success('Real-time transcription started');
+        onTranscriptionStart?.();
       }
     },
     onRecordingStopped: (data: { transcriptCount?: number }) => {
       setTranscriptionSessionId(null);
       setStatus('idle');
       setIsTranscribing(false);
+      onTranscriptionStop?.();
       if (data.transcriptCount && data.transcriptCount > 0) {
         toast.success(`Recording saved with ${data.transcriptCount} transcript segments`);
       }

@@ -11,20 +11,43 @@ export const api = axios.create({
   },
 });
 
-// Add auth token to requests
+// Add auth token to requests and log all API calls
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('idToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  // Log all API calls
+  console.log(`[API CALL] ${config.method?.toUpperCase()} ${config.url}`, {
+    timestamp: new Date().toISOString(),
+    method: config.method,
+    url: config.url,
+    baseURL: config.baseURL,
+    params: config.params,
+    data: config.data,
+  });
+  
   return config;
 });
 
 // Handle auth errors
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses
+    console.log(`[API RESPONSE] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
+      timestamp: new Date().toISOString(),
+      status: response.status,
+    });
+    return response;
+  },
   async (error) => {
     debugLog('API', 'Response error', { status: error.response?.status, url: error.config?.url });
+    console.error(`[API ERROR] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, {
+      timestamp: new Date().toISOString(),
+      status: error.response?.status,
+      message: error.message,
+    });
     if (error.response?.status === 401 && !error.config?._retry) {
       debugLog('API', '401 error, attempting token refresh');
       error.config._retry = true;
@@ -160,11 +183,11 @@ export const transcriptApi = {
     const response = await api.get<{
       success: boolean;
       data: {
-        transcripts: Array<{
-          encounterId: string;
+        encounterId: string;
+        transcriptions: Array<{
           timestamp: number;
           text: string;
-          speaker?: string;
+          speaker: string;
           confidence?: number;
           entities?: Array<{
             type: 'medication' | 'symptom' | 'vital' | 'condition';

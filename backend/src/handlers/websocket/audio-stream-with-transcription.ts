@@ -98,12 +98,29 @@ export const handler = async (
         
         try {
           // Process audio chunk for recording
-          await audioService.processAudioChunk({
+          const result = await audioService.processAudioChunk({
             connectionId,
             sessionId,
             chunk,
             sequenceNumber,
           });
+          
+          // Check if recording was auto-stopped
+          if (result.status === 'auto-stopped') {
+            console.log(`[audio-chunk] Recording auto-stopped due to: ${result.reason}`);
+            await apigwManagementApi.send(
+              new PostToConnectionCommand({
+                ConnectionId: connectionId,
+                Data: JSON.stringify({
+                  type: 'recording-auto-stopped',
+                  reason: result.reason,
+                  duration: result.duration,
+                  sessionId,
+                }),
+              })
+            );
+            break;
+          }
 
           // Process audio chunk for transcription if enabled
           let transcriptSegment = null;

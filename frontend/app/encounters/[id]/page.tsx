@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { ConsentDialog } from '@/components/consent-dialog';
 import { RealTimeTranscription } from '@/components/real-time-transcription';
 import { RecordingsList } from '@/components/recordings-list';
+import { TranscriptionViewer } from '@/components/transcription-viewer';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
@@ -67,11 +68,14 @@ const statusConfig = {
 };
 
 export default function EncounterDetailPage() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params?.id as string;
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, logout } = useAuth();
   const [showConsentDialog, setShowConsentDialog] = useState(false);
+  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   const { data: encounter, isLoading, error } = useQuery({
     queryKey: ['encounter', id],
@@ -270,11 +274,25 @@ export default function EncounterDetailPage() {
 
             {/* Real-time Transcription Interface */}
             {encounter.status === EncounterStatus.IN_PROGRESS && hasRecordingConsent && (
-              <RealTimeTranscription encounterId={encounter.id} />
+              <RealTimeTranscription 
+                encounterId={encounter.id}
+                onTranscriptionStart={() => setIsTranscribing(true)}
+                onTranscriptionStop={() => setIsTranscribing(false)}
+              />
             )}
             
-            {/* Recordings List - Show for all statuses if there are recordings */}
-            <RecordingsList encounterId={encounter.id} />
+            {/* Recordings and Transcriptions */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <RecordingsList 
+                encounterId={encounter.id} 
+                onRecordingSelect={setSelectedRecordingId}
+              />
+              <TranscriptionViewer 
+                encounterId={encounter.id} 
+                recordingId={selectedRecordingId || undefined}
+                autoRefresh={isTranscribing}
+              />
+            </div>
 
             {/* Chief Complaint */}
             {encounter.chiefComplaint && (

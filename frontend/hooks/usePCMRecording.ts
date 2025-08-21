@@ -70,19 +70,22 @@ export function usePCMRecording({
           break;
           
         case 'recording-stopped':
-          console.log('[PCM Recording] Recording stopped:', message);
-          setIsRecording(false);
-          setSessionId(null);
-          sessionIdRef.current = null;
-          transcriptionSessionIdRef.current = null;
-          
-          if (message.recordingId && onRecordingComplete) {
-            onRecordingComplete(message.recordingId);
-          }
-          
-          // Call custom handler
-          if (onRecordingStopped) {
-            onRecordingStopped(message);
+          // Only process if this message is for our current session
+          if (message.sessionId === sessionIdRef.current) {
+            console.log('[PCM Recording] Recording stopped:', message);
+            setIsRecording(false);
+            setSessionId(null);
+            sessionIdRef.current = null;
+            transcriptionSessionIdRef.current = null;
+            
+            if (message.recordingId && onRecordingComplete) {
+              onRecordingComplete(message.recordingId);
+            }
+            
+            // Call custom handler
+            if (onRecordingStopped) {
+              onRecordingStopped(message);
+            }
           }
           break;
           

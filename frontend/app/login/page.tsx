@@ -17,7 +17,7 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const searchParams = useSearchParams();
-  const message = searchParams.get('message');
+  const message = searchParams?.get('message');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

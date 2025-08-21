@@ -17,7 +17,7 @@ interface FormatTest {
     url: string;
     size: number;
     duration?: number;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
   };
 }
 
@@ -145,7 +145,7 @@ export default function TestAudioFormatsPage() {
           resolve(true);
         };
         
-        audio.onerror = (e) => {
+        audio.onerror = () => {
           const error = `Error code: ${audio.error?.code}, message: ${audio.error?.message}`;
           setFormats(prev => prev.map(f => {
             if (f.format === format && f.playbackTest) {

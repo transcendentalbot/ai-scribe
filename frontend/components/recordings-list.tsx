@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
-import { Play, Pause, Download, Mic, Clock, Calendar } from 'lucide-react';
+import { Play, Pause, Download, Mic, Clock, Calendar, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { recordingApi } from '@/lib/api';
 import { toast } from 'sonner';
+import { debugAudioPlayback, logDebugInfo } from '@/lib/debug-audio';
 
 interface Recording {
   id: string;
@@ -77,24 +78,84 @@ export function RecordingsList({ encounterId, onNewRecording, onRecordingSelect 
         // Stop any current playback
         audioRef.current.pause();
         
-        // Log recording details for debugging
-        console.log('Attempting to play recording:', {
+        // Extensive logging for debugging
+        console.group('🎵 Audio Playback Debug Info');
+        console.log('Recording details:', {
           id: recording.id,
           url: recording.url,
           s3Key: recording.s3Key,
+          mimeType: recording.mimeType,
+          duration: recording.duration,
+          fileSize: recording.fileSize,
+          createdAt: recording.createdAt,
+          debugInfo: (recording as any).debugInfo,
+        });
+        
+        // Test URL accessibility
+        console.log('Testing URL accessibility...');
+        try {
+          const headResponse = await fetch(recording.url, { method: 'HEAD' });
+          console.log('HEAD request response:', {
+            status: headResponse.status,
+            statusText: headResponse.statusText,
+            contentType: headResponse.headers.get('content-type'),
+            contentLength: headResponse.headers.get('content-length'),
+            headers: Array.from(headResponse.headers.entries()),
+          });
+        } catch (fetchError) {
+          console.error('Failed to fetch HEAD:', fetchError);
+        }
+        
+        // Check browser audio format support
+        const audio = audioRef.current;
+        console.log('Browser audio support:', {
+          webm: audio.canPlayType('audio/webm'),
+          webmOpus: audio.canPlayType('audio/webm;codecs=opus'),
+          ogg: audio.canPlayType('audio/ogg'),
+          oggOpus: audio.canPlayType('audio/ogg;codecs=opus'),
+          mp4: audio.canPlayType('audio/mp4'),
         });
         
         // Set new source
+        console.log('Setting audio source...');
         audioRef.current.src = recording.url;
         
+        // Add load event listeners for debugging
+        const loadStartHandler = () => console.log('⏳ loadstart event fired');
+        const loadedMetadataHandler = () => {
+          console.log('✅ loadedmetadata event fired:', {
+            duration: audio.duration,
+            readyState: audio.readyState,
+            networkState: audio.networkState,
+          });
+        };
+        const canPlayHandler = () => console.log('✅ canplay event fired');
+        const canPlayThroughHandler = () => console.log('✅ canplaythrough event fired');
+        
+        audio.addEventListener('loadstart', loadStartHandler);
+        audio.addEventListener('loadedmetadata', loadedMetadataHandler);
+        audio.addEventListener('canplay', canPlayHandler);
+        audio.addEventListener('canplaythrough', canPlayThroughHandler);
+        
         // Try to load and play
+        console.log('Loading audio...');
         await audioRef.current.load();
+        console.log('Audio loaded, attempting to play...');
         await audioRef.current.play();
+        console.log('✅ Audio playing successfully');
+        console.groupEnd();
+        
+        // Clean up event listeners
+        audio.removeEventListener('loadstart', loadStartHandler);
+        audio.removeEventListener('loadedmetadata', loadedMetadataHandler);
+        audio.removeEventListener('canplay', canPlayHandler);
+        audio.removeEventListener('canplaythrough', canPlayThroughHandler);
         
         setPlayingId(recording.id);
         
       } catch (error) {
-        console.error('Failed to play audio:', error);
+        console.error('❌ Failed to play audio:', error);
+        console.groupEnd();
         
         // Check if it's a CORS issue
         if (error instanceof Error) {
@@ -231,8 +292,21 @@ export function RecordingsList({ encounterId, onNewRecording, onRecordingSelect 
                     size="sm"
                     variant="ghost"
                     onClick={() => handleDownload(recording)}
+                    title="Download"
                   >
                     <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      const debugInfo = await debugAudioPlayback(recording);
+                      logDebugInfo(debugInfo);
+                      toast.info('Debug info logged to console');
+                    }}
+                    title="Debug Audio"
+                  >
+                    <Bug className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
