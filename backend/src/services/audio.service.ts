@@ -132,11 +132,24 @@ class AudioService {
     const timestamp = new Date().toISOString();
     // Support different audio formats
     let audioFormat = 'webm'; // default
-    if (metadata?.codec?.includes('mp4')) {
+    let contentType = 'audio/webm';
+    
+    // Check for PCM format first
+    if (metadata?.format === 'pcm' || metadata?.encoding === 'linear16') {
+      audioFormat = 'raw';
+      contentType = 'audio/raw';
+      console.log(`[AudioService] Detected PCM/raw audio format`);
+    } else if (metadata?.codec?.includes('mp4')) {
       audioFormat = 'mp4';
+      contentType = 'audio/mp4';
     } else if (metadata?.codec?.includes('ogg')) {
       audioFormat = 'ogg';
+      contentType = 'audio/ogg';
+    } else if (metadata?.codec?.includes('webm')) {
+      audioFormat = 'webm';
+      contentType = 'audio/webm';
     }
+    
     const s3Key = `recordings/${encounterId}/${sessionId}/audio.${audioFormat}`;
 
     console.log(`[AudioService] Starting recording - sessionId: ${sessionId}, connectionId: ${connectionId}`);
@@ -146,8 +159,7 @@ class AudioService {
       new CreateMultipartUploadCommand({
         Bucket: this.bucketName,
         Key: s3Key,
-        ContentType: metadata?.codec?.includes('mp4') ? 'audio/mp4' : 
-                     metadata?.codec?.includes('ogg') ? 'audio/ogg' : 'audio/webm',
+        ContentType: contentType,
         Metadata: {
           encounterId,
           sessionId,

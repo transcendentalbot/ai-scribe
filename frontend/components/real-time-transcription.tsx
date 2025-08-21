@@ -5,7 +5,7 @@ import { Wifi, WifiOff, Mic, Square, Activity, Bot, User, AlertCircle } from 'lu
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { usePCMRecording } from '@/hooks/usePCMRecording';
+import { useWebSocketRecording } from '@/hooks/useWebSocketRecording-with-transcription';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -60,8 +60,9 @@ export function RealTimeTranscription({ encounterId, onTranscriptionStart, onTra
   const { 
     startRecording, 
     stopRecording, 
-    duration
-  } = usePCMRecording({
+    duration,
+    isRecording
+  } = useWebSocketRecording({
     encounterId,
     onRecordingStarted: (data: { transcriptionSessionId?: string }) => {
       if (data.transcriptionSessionId) {

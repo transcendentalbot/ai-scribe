@@ -5,13 +5,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
+interface TestResult {
+  test: string;
+  success?: boolean;
+  [key: string]: unknown;
+}
+
 export default function TestS3AccessPage() {
-  const [testResults, setTestResults] = useState<any[]>([]);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const testS3Access = async () => {
     setIsLoading(true);
-    const results: any[] = [];
+    const results: TestResult[] = [];
 
     // Test URL from the logs
     const testUrl = prompt('Paste the S3 presigned URL from the console logs:');
@@ -191,9 +197,9 @@ export default function TestS3AccessPage() {
         <ul className="list-disc pl-6 space-y-2">
           <li>Presigned URL has expired (check X-Amz-Expires)</li>
           <li>Signature mismatch (ResponseContentType/Disposition parameters)</li>
-          <li>IAM role doesn't have GetObject permission</li>
+          <li>IAM role doesn&apos;t have GetObject permission</li>
           <li>Bucket policy is blocking access</li>
-          <li>Object doesn't exist at the specified key</li>
+          <li>Object doesn&apos;t exist at the specified key</li>
           <li>KMS key permissions (for encrypted objects)</li>
         </ul>
       </div>

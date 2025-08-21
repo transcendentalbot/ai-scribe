@@ -3,12 +3,11 @@ import { S3Client, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { createResponse } from '../../utils/response';
+import { response } from '../../utils/response';
 
 const s3Client = new S3Client({});
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
-const response = createResponse();
 
 export const handler = async (
   event: APIGatewayProxyEvent
