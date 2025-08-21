@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
+import { fixWebmDuration } from '../utils/fix-webm-duration';
 
 const s3Client = new S3Client({});
 const dynamoClient = new DynamoDBClient({});
@@ -28,6 +29,7 @@ class AudioService {
   private readonly tableName = process.env.TABLE_NAME!;
   private readonly connectionsTable = process.env.CONNECTIONS_TABLE_NAME!;
   private readonly MIN_PART_SIZE = 5 * 1024 * 1024; // 5MB minimum for S3 multipart
+  private readonly MAX_RECORDING_DURATION = 300; // 5 minutes in seconds
   private sessionBuffers: Map<string, Buffer[]> = new Map(); // In-memory buffer storage
 
   // Store session in DynamoDB instead of memory
@@ -128,7 +130,14 @@ class AudioService {
   }) {
     const sessionId = uuidv4();
     const timestamp = new Date().toISOString();
-    const s3Key = `recordings/${encounterId}/${sessionId}/audio.webm`;
+    // Support different audio formats
+    let audioFormat = 'webm'; // default
+    if (metadata?.codec?.includes('mp4')) {
+      audioFormat = 'mp4';
+    } else if (metadata?.codec?.includes('ogg')) {
+      audioFormat = 'ogg';
+    }
+    const s3Key = `recordings/${encounterId}/${sessionId}/audio.${audioFormat}`;
 
     console.log(`[AudioService] Starting recording - sessionId: ${sessionId}, connectionId: ${connectionId}`);
 
@@ -137,7 +146,8 @@ class AudioService {
       new CreateMultipartUploadCommand({
         Bucket: this.bucketName,
         Key: s3Key,
-        ContentType: 'audio/webm',
+        ContentType: metadata?.codec?.includes('mp4') ? 'audio/mp4' : 
+                     metadata?.codec?.includes('ogg') ? 'audio/ogg' : 'audio/webm',
         Metadata: {
           encounterId,
           sessionId,
@@ -245,6 +255,22 @@ class AudioService {
       // In production, you might want to implement a reordering buffer
     }
 
+    // Check if recording has exceeded maximum duration
+    const currentTime = new Date();
+    const startTime = new Date(session.startTime);
+    const durationSeconds = Math.floor((currentTime.getTime() - startTime.getTime()) / 1000);
+    
+    if (durationSeconds > this.MAX_RECORDING_DURATION) {
+      console.warn(`[AudioService] Recording exceeded maximum duration (${this.MAX_RECORDING_DURATION}s). Auto-stopping session ${sessionId}`);
+      // Auto-stop the recording
+      await this.stopRecording({ connectionId, sessionId });
+      return { 
+        status: 'auto-stopped', 
+        reason: 'maximum_duration_exceeded',
+        duration: durationSeconds 
+      };
+    }
+
     // Convert base64 to buffer
     const buffer = Buffer.from(chunk, 'base64');
     
@@ -257,7 +283,7 @@ class AudioService {
     
     // Check if buffer exceeds minimum part size
     if (session.bufferSize >= this.MIN_PART_SIZE) {
-      // Combine all buffers
+      // Combine all buffers - for WebM, we just concatenate as MediaRecorder handles structure
       const combinedBuffer = Buffer.concat(buffers);
       
       // Upload as a part

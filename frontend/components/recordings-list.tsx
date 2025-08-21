@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
 import { Play, Pause, Download, Mic, Clock, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,13 +21,15 @@ interface Recording {
 interface RecordingsListProps {
   encounterId: string;
   onNewRecording?: () => void;
+  onRecordingSelect?: (recordingId: string) => void;
 }
 
-export function RecordingsList({ encounterId, onNewRecording }: RecordingsListProps) {
+export function RecordingsList({ encounterId, onNewRecording, onRecordingSelect }: RecordingsListProps) {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [audioElement] = useState<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const fetchRecordings = useCallback(async () => {
     try {
@@ -63,29 +65,52 @@ export function RecordingsList({ encounterId, onNewRecording }: RecordingsListPr
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handlePlayPause = (recording: Recording) => {
+  const handlePlayPause = async (recording: Recording) => {
+    if (!audioRef.current) return;
+    
     if (playingId === recording.id) {
       // Pause current recording
-      if (audioElement) {
-        audioElement.pause();
-        setPlayingId(null);
-      }
+      audioRef.current.pause();
+      setPlayingId(null);
     } else {
-      // Play new recording
-      if (audioElement) {
-        audioElement.pause();
-      }
-      
-      const audio = new Audio(recording.url);
-      audio.onended = () => setPlayingId(null);
-      audio.onerror = () => {
-        toast.error('Failed to play recording');
+      try {
+        // Stop any current playback
+        audioRef.current.pause();
+        
+        // Log recording details for debugging
+        console.log('Attempting to play recording:', {
+          id: recording.id,
+          url: recording.url,
+          s3Key: recording.s3Key,
+        });
+        
+        // Set new source
+        audioRef.current.src = recording.url;
+        
+        // Try to load and play
+        await audioRef.current.load();
+        await audioRef.current.play();
+        
+        setPlayingId(recording.id);
+        
+      } catch (error) {
+        console.error('Failed to play audio:', error);
+        
+        // Check if it's a CORS issue
+        if (error instanceof Error) {
+          if (error.name === 'NotAllowedError') {
+            toast.error('Playback not allowed. Please try clicking play again.');
+          } else if (error.name === 'NotSupportedError') {
+            toast.error('Audio format not supported by your browser. Try downloading the file instead.');
+          } else {
+            toast.error('Failed to play recording. Try downloading it instead.');
+          }
+        } else {
+          toast.error('Failed to play recording. Try downloading it instead.');
+        }
+        
         setPlayingId(null);
-      };
-      
-      audio.play();
-      setAudioElement(audio);
-      setPlayingId(recording.id);
+      }
     }
   };
 
@@ -140,6 +165,7 @@ export function RecordingsList({ encounterId, onNewRecording }: RecordingsListPr
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
@@ -166,7 +192,8 @@ export function RecordingsList({ encounterId, onNewRecording }: RecordingsListPr
             {recordings.map((recording) => (
               <div
                 key={recording.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                onClick={() => onRecordingSelect?.(recording.id)}
               >
                 <div className="flex items-center gap-4">
                   <Button
@@ -214,5 +241,38 @@ export function RecordingsList({ encounterId, onNewRecording }: RecordingsListPr
         )}
       </CardContent>
     </Card>
+    {/* Hidden audio element for playback */}
+    <audio 
+      ref={audioRef} 
+      style={{ display: 'none' }}
+      onEnded={() => setPlayingId(null)}
+      onError={(e) => {
+        const audio = e.currentTarget as HTMLAudioElement;
+        console.error('Audio element error:', e);
+        console.error('Audio error details:', {
+          code: audio.error?.code,
+          message: audio.error?.message,
+          src: audio.src,
+          currentSrc: audio.currentSrc,
+          networkState: audio.networkState,
+          readyState: audio.readyState
+        });
+        
+        let errorMessage = 'Failed to play recording';
+        
+        // MediaError codes: 1=ABORTED, 2=NETWORK, 3=DECODE, 4=SRC_NOT_SUPPORTED
+        if (audio.error?.code === 4) {
+          errorMessage = 'Audio format not supported. Try downloading the file.';
+        } else if (audio.error?.code === 3) {
+          errorMessage = 'Audio decoding error. File may be corrupted.';
+        } else if (audio.error?.code === 2) {
+          errorMessage = 'Network error loading audio.';
+        }
+        
+        toast.error(errorMessage);
+        setPlayingId(null);
+      }}
+    />
+    </>
   );
 }

@@ -51,6 +51,9 @@ export const handler = async (
             new GetObjectCommand({
               Bucket: process.env.AUDIO_BUCKET_NAME!,
               Key: recording.s3Key,
+              ResponseContentType: recording.s3Key.endsWith('.mp4') ? 'audio/mp4' : 
+                                   recording.s3Key.endsWith('.ogg') ? 'audio/ogg' : 'audio/webm;codecs=opus',
+              ResponseContentDisposition: 'inline',
             }),
             { expiresIn: 3600 } // 1 hour expiration
           );

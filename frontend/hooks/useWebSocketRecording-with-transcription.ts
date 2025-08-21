@@ -85,19 +85,46 @@ export function useWebSocketRecording({
           break;
           
         case 'recording-stopped':
-          console.log('[WebSocket Recording] Recording stopped:', message);
-          setIsRecording(false);
-          setSessionId(null);
-          sessionIdRef.current = null;
-          transcriptionSessionIdRef.current = null;
-          
-          if (message.recordingId && onRecordingComplete) {
-            onRecordingComplete(message.recordingId);
+          // Only process if this message is for our current session
+          if (message.sessionId === sessionIdRef.current) {
+            console.log('[WebSocket Recording] Recording stopped:', message);
+            setIsRecording(false);
+            setSessionId(null);
+            sessionIdRef.current = null;
+            transcriptionSessionIdRef.current = null;
+            
+            if (message.recordingId && onRecordingComplete) {
+              onRecordingComplete(message.recordingId);
+            }
+            
+            // Call custom handler
+            if (onRecordingStopped) {
+              onRecordingStopped(message);
+            }
           }
+          break;
           
-          // Call custom handler
-          if (onRecordingStopped) {
-            onRecordingStopped(message);
+        case 'recording-auto-stopped':
+          // Only process if this message is for our current session
+          if (message.sessionId === sessionIdRef.current) {
+            console.warn('[WebSocket Recording] Recording auto-stopped:', message);
+            setIsRecording(false);
+            setSessionId(null);
+            sessionIdRef.current = null;
+            transcriptionSessionIdRef.current = null;
+            
+            // Stop media recorder
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+              mediaRecorderRef.current.stop();
+            }
+            
+            // Show notification to user
+            toast.warning(`Recording automatically stopped after ${Math.floor(message.duration / 60)} minutes to prevent excessive charges.`);
+            
+            // Call handlers
+            if (onRecordingStopped) {
+              onRecordingStopped(message);
+            }
           }
           break;
           
@@ -163,10 +190,63 @@ export function useWebSocketRecording({
         }
       });
       
-      // Create MediaRecorder
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      // Detect best audio format for browser compatibility
+      const getBestAudioFormat = () => {
+        // Safari detection
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        
+        // For Safari, try mp4 first
+        if (isSafari) {
+          console.log('[WebSocket Recording] Detected Safari browser');
+          if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            console.log('[WebSocket Recording] Using audio/mp4 for Safari');
+            return 'audio/mp4';
+          }
+          // Safari might support webm in newer versions
+          if (MediaRecorder.isTypeSupported('audio/webm')) {
+            console.log('[WebSocket Recording] Using audio/webm for Safari');
+            return 'audio/webm';
+          }
+        }
+        
+        // Try audio/ogg first - it has better metadata support
+        if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+          console.log('[WebSocket Recording] Using audio/ogg;codecs=opus for better metadata support');
+          return 'audio/ogg;codecs=opus';
+        }
+        
+        // For Chrome/Edge, prefer webm with opus codec
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          console.log('[WebSocket Recording] Using audio/webm;codecs=opus');
+          return 'audio/webm;codecs=opus';
+        }
+        
+        // Fallback to basic webm
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          console.log('[WebSocket Recording] Using audio/webm (no codec specified)');
+          return 'audio/webm';
+        }
+        
+        // Last resort - try ogg without codec specification
+        if (MediaRecorder.isTypeSupported('audio/ogg')) {
+          console.log('[WebSocket Recording] Using audio/ogg (no codec specified)');
+          return 'audio/ogg';
+        }
+        
+        // Final fallback
+        console.error('[WebSocket Recording] No supported audio format found');
+        return '';
+      };
+
+      const mimeType = getBestAudioFormat();
+      
+      if (!mimeType) {
+        toast.error('Your browser does not support audio recording');
+        setIsInitializing(false);
+        return;
+      }
+      
+      console.log('[WebSocket Recording] Using audio format:', mimeType);
         
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType,
