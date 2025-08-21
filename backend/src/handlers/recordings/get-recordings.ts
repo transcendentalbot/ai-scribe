@@ -63,13 +63,12 @@ export const handler = async (
           });
           
           // Generate presigned URL for download/playback
+          // Note: Removed ResponseContentType and ResponseContentDisposition to avoid signature issues
           const presignedUrl = await getSignedUrl(
             s3Client,
             new GetObjectCommand({
               Bucket: process.env.AUDIO_BUCKET_NAME!,
               Key: recording.s3Key,
-              ResponseContentType: contentType,
-              ResponseContentDisposition: 'inline',
             }),
             { expiresIn: 3600 } // 1 hour expiration
           );

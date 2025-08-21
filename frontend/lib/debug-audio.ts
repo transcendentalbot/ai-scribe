@@ -25,7 +25,7 @@ export interface AudioDebugInfo {
   };
 }
 
-export async function debugAudioPlayback(recording: any): Promise<AudioDebugInfo> {
+export async function debugAudioPlayback(recording: { id: string; url: string; mimeType?: string }): Promise<AudioDebugInfo> {
   const audio = new Audio();
   
   // Check browser support

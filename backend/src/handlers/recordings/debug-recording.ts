@@ -116,8 +116,6 @@ export const handler = async (
           new GetObjectCommand({
             Bucket: process.env.AUDIO_BUCKET_NAME!,
             Key: recording.s3Key,
-            ResponseContentType: contentType,
-            ResponseContentDisposition: 'inline',
           }),
           { expiresIn: 3600 }
         );

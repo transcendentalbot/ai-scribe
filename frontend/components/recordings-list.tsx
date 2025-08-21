@@ -17,6 +17,10 @@ interface Recording {
   s3Key: string;
   url: string;
   transcriptionId?: string;
+  mimeType?: string;
+  fileSize?: number;
+  createdAt?: string;
+  debugInfo?: unknown;
 }
 
 interface RecordingsListProps {
@@ -88,7 +92,7 @@ export function RecordingsList({ encounterId, onNewRecording, onRecordingSelect 
           duration: recording.duration,
           fileSize: recording.fileSize,
           createdAt: recording.createdAt,
-          debugInfo: (recording as any).debugInfo,
+          debugInfo: 'debugInfo' in recording ? recording.debugInfo : undefined,
         });
         
         // Test URL accessibility
