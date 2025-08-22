@@ -23,7 +23,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://41h7fp3vk7.execute-api.us-east-1.amazonaws.com/prod';
+// Temporary CORS proxy while backend deployment is in progress
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cors-anywhere.herokuapp.com/https://41h7fp3vk7.execute-api.us-east-1.amazonaws.com/prod';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
