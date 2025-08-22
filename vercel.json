@@ -2,5 +2,10 @@
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/.next",
   "installCommand": "cd frontend && npm install",
-  "devCommand": "cd frontend && npm run dev"
+  "devCommand": "cd frontend && npm run dev",
+  "functions": {
+    "frontend/app/api/**/*.ts": {
+      "excludeFiles": "{test/**,**/*.test.*}"
+    }
+  }
 }

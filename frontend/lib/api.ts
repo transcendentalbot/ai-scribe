@@ -2,8 +2,7 @@ import axios from 'axios';
 import { Encounter, Patient, EncounterStatus, ConsentType } from '@/types';
 import { debugLog } from '@/utils/debug-logger';
 
-// Temporary CORS proxy while backend deployment is in progress
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cors-anywhere.herokuapp.com/https://41h7fp3vk7.execute-api.us-east-1.amazonaws.com/prod';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/proxy';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -33,7 +32,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+          const response = await axios.post(`/api/proxy/auth/refresh`, {
             refreshToken,
           });
           debugLog('API', 'Token refresh response', response.data);
