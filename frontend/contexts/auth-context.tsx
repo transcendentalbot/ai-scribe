@@ -127,35 +127,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     debugLog('AUTH', 'Login attempt started');
-    
-    // TEMPORARY: Mock authentication for testing SOAP notes while backend CORS is being fixed
-    if (email === 'demo@test.com' && password === 'demo123') {
-      const mockUser = {
-        id: 'demo-user-id',
-        email: 'demo@test.com',
-        firstName: 'Demo',
-        lastName: 'User',
-        name: 'Demo User',
-        providerId: 'demo-provider'
-      };
-      const mockTokens = {
-        accessToken: 'mock-access-token',
-        refreshToken: 'mock-refresh-token',
-        idToken: 'mock-id-token'
-      };
-      
-      localStorage.setItem('accessToken', mockTokens.accessToken);
-      localStorage.setItem('refreshToken', mockTokens.refreshToken);
-      localStorage.setItem('idToken', mockTokens.idToken);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      setUser(mockUser);
-      
-      setTimeout(() => {
-        router.push('/');
-      }, 100);
-      return;
-    }
-    
     try {
       const response = await axios.post(`${API_BASE_URL}/auth/login`, {
         email,
