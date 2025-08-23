@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://41h7fp3vk7.execute-api.us-east-1.amazonaws.com/prod';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://1e87o2u239.execute-api.us-east-1.amazonaws.com/prod';
 
 export async function GET(
   request: NextRequest,

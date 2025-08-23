@@ -36,7 +36,7 @@ echo "  Region: $REGION"
 echo ""
 
 # Check if CDK is installed
-if ! command -v cdk &> /dev/null; then
+if ! command -v npx cdk &> /dev/null; then
     echo -e "${RED}Error: AWS CDK is not installed${NC}"
     echo "Install with: npm install -g aws-cdk"
     exit 1
@@ -48,7 +48,7 @@ npm run build
 
 # Deploy the stack
 echo -e "${GREEN}Deploying stack ai-scribe-$STAGE...${NC}"
-cdk deploy ai-scribe-$STAGE \
+npx cdk deploy ai-scribe-$STAGE \
   --context stage=$STAGE \
   --require-approval never
 
