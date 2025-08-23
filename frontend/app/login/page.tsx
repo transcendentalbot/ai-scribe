@@ -11,8 +11,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
 function LoginForm() {
-  const [email, setEmail] = useState('testuser@healthspaceai.com');
-  const [password, setPassword] = useState('TestUser123!');
+  const [email, setEmail] = useState('test@example.com');
+  const [password, setPassword] = useState('TestPass123!');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
@@ -60,7 +60,7 @@ function LoginForm() {
               <div className="p-3 bg-blue-50 rounded-md">
                 <p className="text-sm text-blue-700 mb-2">Test Account 1:</p>
                 <p className="text-xs font-mono">Email: test@example.com</p>
-                <p className="text-xs font-mono">Password: TestPassword123!</p>
+                <p className="text-xs font-mono">Password: TestPass123!</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -68,7 +68,7 @@ function LoginForm() {
                   className="mt-2"
                   onClick={() => {
                     setEmail('test@example.com');
-                    setPassword('TestPassword123!');
+                    setPassword('TestPass123!');
                   }}
                 >
                   Use Test Account 1
@@ -89,6 +89,23 @@ function LoginForm() {
                   }}
                 >
                   Use Test Account 2
+                </Button>
+              </div>
+              <div className="p-3 bg-purple-50 rounded-md">
+                <p className="text-sm text-purple-700 mb-2">Simple Test Account:</p>
+                <p className="text-xs font-mono">Email: simple@test.com</p>
+                <p className="text-xs font-mono">Password: SimplePass@123</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => {
+                    setEmail('simple@test.com');
+                    setPassword('SimplePass@123');
+                  }}
+                >
+                  Use Simple Account
                 </Button>
               </div>
             </div>
