@@ -612,6 +612,17 @@ class TranscriptionService {
       ttl: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60), // 90 days
     };
 
+    // LOUD LOG: Show what's being saved to DynamoDB
+    console.log('🔊 [LOUD LOG] SAVING TRANSCRIPT SEGMENT TO DYNAMODB:');
+    console.log('🔊 FULL SEGMENT:', JSON.stringify(segment, null, 2));
+    console.log('🔊 TEXT:', segment.text);
+    console.log('🔊 TEXT LENGTH:', segment.text.length);
+    console.log('🔊 SPEAKER:', segment.speaker);
+    console.log('🔊 ENCOUNTER ID:', segment.encounterId);
+    console.log('🔊 TIMESTAMP:', segment.timestamp);
+    console.log('🔊 IS PARTIAL:', segment.isPartial);
+    console.log('🔊 DynamoDB Item:', JSON.stringify(item, null, 2));
+
     console.log(`[Transcription] Saving segment - text: "${segment.text.substring(0, 50)}..."`);
     await docClient.send(
       new PutCommand({
@@ -619,6 +630,8 @@ class TranscriptionService {
         Item: item,
       })
     );
+    
+    console.log('🔊 [LOUD LOG] TRANSCRIPT SEGMENT SAVED SUCCESSFULLY!');
   }
 
   async stopTranscription(params: { sessionId: string }): Promise<{ transcriptCount: number; recordingId?: string }> {

@@ -69,6 +69,20 @@ async function getBedrockModelId(): Promise<string> {
 async function generateSOAPNote(transcript: string): Promise<SOAPSections> {
   const modelId = await getBedrockModelId();
   
+  // LOUD LOG: Show transcript being sent to LLM
+  logger.info('🔊 [LOUD LOG] TRANSCRIPT BEING SENT TO LLM:', {
+    fullTranscript: transcript,
+    transcriptLength: transcript.length,
+    first500Chars: transcript.substring(0, 500),
+    last500Chars: transcript.substring(Math.max(0, transcript.length - 500)),
+  });
+  
+  // Log transcript to console for debugging
+  console.log('==== FULL TRANSCRIPT START ====');
+  console.log(transcript);
+  console.log('==== FULL TRANSCRIPT END ====');
+  console.log(`Total transcript length: ${transcript.length} characters`);
+  
   // Exact GPT-4 configuration from PRP
   const messages = [
     {
@@ -113,30 +127,48 @@ async function generateSOAPNote(transcript: string): Promise<SOAPSections> {
     }
   ];
 
+  // Log the full message being sent
+  logger.info('🔊 [LOUD LOG] FULL LLM REQUEST:', {
+    messages: JSON.stringify(messages, null, 2),
+    modelId: modelId || 'NOT_SET',
+  });
+
   try {
-    logger.info('[GPT-4] Generating SOAP note', { 
+    logger.info('[Claude] Generating SOAP note', { 
       transcriptLength: transcript.length,
-      model: GPT_CONFIG.model,
+      modelId: modelId,
     });
 
     const startTime = Date.now();
     
-    const response = await client.chat.completions.create({
-      model: GPT_CONFIG.model,
-      messages,
-      temperature: GPT_CONFIG.temperature,
-      max_tokens: GPT_CONFIG.max_tokens,
+    // Prepare the request for AWS Bedrock Claude
+    const requestBody = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: CLAUDE_CONFIG.max_tokens,
+      messages: messages,
+      temperature: CLAUDE_CONFIG.temperature,
+    };
+
+    const command = new InvokeModelCommand({
+      modelId: modelId,
+      body: JSON.stringify(requestBody),
+      contentType: 'application/json',
+      accept: 'application/json',
     });
+
+    const response = await bedrockClient.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
 
     const processingTime = Date.now() - startTime;
-    logger.info('[GPT-4] Note generation completed', { 
+    logger.info('[Claude] Note generation completed', { 
       processingTimeMs: processingTime,
-      usage: response.usage,
+      inputTokens: responseBody.usage?.input_tokens,
+      outputTokens: responseBody.usage?.output_tokens,
     });
 
-    const content = response.choices[0]?.message?.content;
+    const content = responseBody.content?.[0]?.text;
     if (!content) {
-      throw new Error('No content returned from GPT-4');
+      throw new Error('No content returned from Claude');
     }
 
     // Parse and validate JSON response
@@ -144,11 +176,11 @@ async function generateSOAPNote(transcript: string): Promise<SOAPSections> {
     try {
       soapNote = JSON.parse(content);
     } catch (parseError) {
-      logger.error('[GPT-4] Failed to parse JSON response', { 
+      logger.error('[Claude] Failed to parse JSON response', { 
         content: content.substring(0, 500),
         error: parseError instanceof Error ? parseError.message : 'Parse error',
       });
-      throw new Error('Invalid JSON response from GPT-4');
+      throw new Error('Invalid JSON response from Claude');
     }
 
     // Validate required fields
@@ -162,7 +194,7 @@ async function generateSOAPNote(transcript: string): Promise<SOAPSections> {
     return soapNote;
 
   } catch (error) {
-    logger.error('[GPT-4] Note generation failed', {
+    logger.error('[Claude] Note generation failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
       transcriptLength: transcript.length,
     });
@@ -216,7 +248,22 @@ async function getEncounterTranscripts(encounterId: string): Promise<string> {
       })
     );
 
+    // LOUD LOG: Show raw transcript data from DynamoDB
+    logger.info('🔊 [LOUD LOG] RAW TRANSCRIPT ITEMS FROM DYNAMODB:', {
+      encounterId,
+      itemCount: result.Items?.length || 0,
+      items: result.Items?.map((item, index) => ({
+        index,
+        text: item.text,
+        textLength: item.text?.length || 0,
+        timestamp: item.timestamp,
+        speaker: item.speaker,
+        sk: item.sk,
+      })),
+    });
+
     if (!result.Items || result.Items.length === 0) {
+      logger.error('🔊 [LOUD LOG] NO TRANSCRIPTS FOUND!', { encounterId });
       throw new Error(`No transcripts found for encounter ${encounterId}`);
     }
 
@@ -227,12 +274,23 @@ async function getEncounterTranscripts(encounterId: string): Promise<string> {
       .trim();
 
     if (!fullTranscript) {
+      logger.error('🔊 [LOUD LOG] EMPTY TRANSCRIPT AFTER JOINING!', { 
+        encounterId,
+        itemsWithoutText: result.Items.filter(item => !item.text).length,
+      });
       throw new Error('Empty transcript content');
     }
 
     logger.info('[Transcripts] Retrieved encounter transcripts', {
       encounterId,
       segmentCount: result.Items.length,
+      totalLength: fullTranscript.length,
+    });
+
+    // LOUD LOG: Show final combined transcript
+    logger.info('🔊 [LOUD LOG] FINAL COMBINED TRANSCRIPT:', {
+      encounterId,
+      fullTranscript: fullTranscript.substring(0, 1000) + '...[truncated]',
       totalLength: fullTranscript.length,
     });
 
@@ -391,14 +449,14 @@ export const handler = async (
     logger.info('[Generate Note] Storing transcript in S3', { encounterId, requestId });
     const transcriptS3Key = await storeTranscriptInS3(encounterId, fullTranscript);
 
-    // Step 3: Generate SOAP note with GPT-4 and retry logic
+    // Step 3: Generate SOAP note with Claude via AWS Bedrock and retry logic
     logger.info('[Generate Note] Generating SOAP note', { encounterId, requestId });
     let soapSections: SOAPSections;
     
     try {
       soapSections = await withRetry(() => generateSOAPNote(fullTranscript));
     } catch (error) {
-      logger.warn('[Generate Note] GPT-4 failed, using fallback template', {
+      logger.warn('[Generate Note] Claude failed, using fallback template', {
         encounterId,
         error: error instanceof Error ? error.message : 'Unknown error',
         requestId,
